@@ -1,0 +1,360 @@
+#include <osg/ArgumentParser>
+#include <osgViewer/Viewer>
+#include <osgDB/ReadFile>
+#include <osg/MatrixTransform>
+#include <osg/Geode>
+#include <osg/Geometry>
+#include <osg/ShapeDrawable>
+#include <osgText/Text>
+#include <iostream>
+#include <iomanip>
+#include <string>
+#include <vector>
+
+// Swap Y and Z for car coordinate convention: X=red (left/right), Y=blue (forward), Z=green (up)
+inline osg::Vec3 carCoord(float x, float y, float z) {
+    return osg::Vec3(x, z, y);
+}
+
+// Helper to create a coordinate axes with arrowheads at the origin
+osg::ref_ptr<osg::Node> createAxesWithArrows(float axisLength = 5.0f, float arrowWing = 1.0f)
+{
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode();
+    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry();
+    osg::ref_ptr<osg::Vec3Array> verts = new osg::Vec3Array();
+    osg::ref_ptr<osg::Vec4Array> cols = new osg::Vec4Array();
+
+    // X axis (red, left/right)
+    verts->push_back(osg::Vec3(0,0,0)); verts->push_back(osg::Vec3(axisLength,0,0));
+    cols->push_back(osg::Vec4(1,0,0,1)); cols->push_back(osg::Vec4(1,0,0,1));
+    verts->push_back(osg::Vec3(axisLength,0,0)); verts->push_back(osg::Vec3(axisLength-arrowWing, arrowWing*0.5, 0));
+    cols->push_back(osg::Vec4(1,0,0,1)); cols->push_back(osg::Vec4(1,0,0,1));
+    verts->push_back(osg::Vec3(axisLength,0,0)); verts->push_back(osg::Vec3(axisLength-arrowWing, -arrowWing*0.5, 0));
+    cols->push_back(osg::Vec4(1,0,0,1)); cols->push_back(osg::Vec4(1,0,0,1));
+
+    // Y axis (blue, forward) -- reversed direction!
+    verts->push_back(osg::Vec3(0,0,0)); verts->push_back(osg::Vec3(0,-axisLength,0));
+    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
+    verts->push_back(osg::Vec3(0,-axisLength,0)); verts->push_back(osg::Vec3(arrowWing*0.5, -axisLength+arrowWing, 0));
+    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
+    verts->push_back(osg::Vec3(0,-axisLength,0)); verts->push_back(osg::Vec3(-arrowWing*0.5, -axisLength+arrowWing, 0));
+    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
+
+    // Z axis (green, up)
+    verts->push_back(osg::Vec3(0,0,0)); verts->push_back(osg::Vec3(0,0,axisLength));
+    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    verts->push_back(osg::Vec3(0,0,axisLength)); verts->push_back(osg::Vec3(0, arrowWing*0.5, axisLength-arrowWing));
+    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    verts->push_back(osg::Vec3(0,0,axisLength)); verts->push_back(osg::Vec3(0, -arrowWing*0.5, axisLength-arrowWing));
+    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+
+    geom->setVertexArray(verts);
+    osg::ref_ptr<osg::DrawArrays> drawArrays = new osg::DrawArrays(GL_LINES, 0, verts->size());
+    geom->addPrimitiveSet(drawArrays);
+    geom->setColorArray(cols, osg::Array::BIND_PER_VERTEX);
+
+    geode->addDrawable(geom);
+    geode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    return geode;
+}
+
+// Helper to create a simple camera frustum (pyramid) and a marker at the camera center
+osg::ref_ptr<osg::Node> createCameraFrustum(float sphereRadius = 0.1f)
+{
+    osg::ref_ptr<osg::Group> group = new osg::Group();
+
+    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry();
+    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array();
+    float w = 0.2f, h = 0.15f, d = 0.3f;
+    // Swap y/z for car convention
+    vertices->push_back(carCoord(0, 0, 0));
+    vertices->push_back(carCoord(-w, d, -h));
+    vertices->push_back(carCoord(w, d, -h));
+    vertices->push_back(carCoord(w, d, h));
+    vertices->push_back(carCoord(-w, d, h));
+    geom->setVertexArray(vertices);
+
+    osg::ref_ptr<osg::DrawElementsUInt> indices = new osg::DrawElementsUInt(GL_LINES);
+    for (unsigned i = 1; i <= 4; ++i) {
+        indices->push_back(0);
+        indices->push_back(i);
+    }
+    indices->push_back(1); indices->push_back(2);
+    indices->push_back(2); indices->push_back(3);
+    indices->push_back(3); indices->push_back(4);
+    indices->push_back(4); indices->push_back(1);
+    geom->addPrimitiveSet(indices);
+
+    osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array();
+    colors->push_back(osg::Vec4(0, 1, 0, 1));
+    geom->setColorArray(colors, osg::Array::BIND_OVERALL);
+
+    osg::ref_ptr<osg::Geode> frustumGeode = new osg::Geode();
+    frustumGeode->addDrawable(geom);
+    frustumGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    osg::ref_ptr<osg::Sphere> sphere = new osg::Sphere(carCoord(0, 0, 0), sphereRadius);
+    osg::ref_ptr<osg::ShapeDrawable> sphereDrawable = new osg::ShapeDrawable(sphere);
+    sphereDrawable->setColor(osg::Vec4(0, 0.2, 1, 1));
+    osg::ref_ptr<osg::Geode> sphereGeode = new osg::Geode();
+    sphereGeode->addDrawable(sphereDrawable);
+    sphereGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    group->addChild(frustumGeode);
+    group->addChild(sphereGeode);
+    return group;
+}
+
+// Helper to create a polygon (viewing zone) from 4 points and a label
+osg::ref_ptr<osg::Group> createViewingZoneWithLabel(const std::vector<osg::Vec3>& corners, const std::string& label, const osg::Vec4& color = osg::Vec4(1,0,1,0.7))
+{
+    osg::ref_ptr<osg::Group> group = new osg::Group();
+
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode();
+    osg::ref_ptr<osg::Geometry> geom = new osg::Geometry();
+    osg::ref_ptr<osg::Vec3Array> verts = new osg::Vec3Array();
+    for (const auto& v : corners) verts->push_back(v);
+    verts->push_back(corners[0]);
+    geom->setVertexArray(verts);
+    geom->addPrimitiveSet(new osg::DrawArrays(GL_LINE_STRIP, 0, verts->size()));
+    osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array();
+    colors->push_back(color);
+    geom->setColorArray(colors, osg::Array::BIND_OVERALL);
+
+    // Fill polygon
+    osg::ref_ptr<osg::Geometry> fillGeom = new osg::Geometry();
+    osg::ref_ptr<osg::Vec3Array> fillVerts = new osg::Vec3Array();
+    for (const auto& v : corners) fillVerts->push_back(v);
+    fillGeom->setVertexArray(fillVerts);
+    fillGeom->addPrimitiveSet(new osg::DrawArrays(GL_POLYGON, 0, fillVerts->size()));
+    osg::ref_ptr<osg::Vec4Array> fillColors = new osg::Vec4Array();
+    fillColors->push_back(osg::Vec4(color.r(), color.g(), color.b(), 0.2));
+    fillGeom->setColorArray(fillColors, osg::Array::BIND_OVERALL);
+    fillGeom->getOrCreateStateSet()->setMode(GL_BLEND, osg::StateAttribute::ON);
+    fillGeom->getOrCreateStateSet()->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
+    fillGeom->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    geode->addDrawable(fillGeom);
+    geode->addDrawable(geom);
+    geode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    geode->getOrCreateStateSet()->setMode(GL_BLEND, osg::StateAttribute::ON);
+    geode->getOrCreateStateSet()->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
+
+    group->addChild(geode);
+
+    // Compute centroid for label position
+    osg::Vec3 centroid(0,0,0);
+    for(const auto& v : corners) centroid += v;
+    centroid /= corners.size();
+
+    // Create the label
+    osg::ref_ptr<osgText::Text> zoneText = new osgText::Text;
+    zoneText->setCharacterSize(0.5f); // Larger for visibility
+    zoneText->setAxisAlignment(osgText::TextBase::SCREEN);
+    zoneText->setPosition(centroid);
+    zoneText->setText(label);
+    zoneText->setColor(osg::Vec4(1,1,1,1));
+
+    osg::ref_ptr<osg::Geode> zoneTextGeode = new osg::Geode();
+    zoneTextGeode->addDrawable(zoneText);
+    zoneTextGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    group->addChild(zoneTextGeode);
+
+    return group;
+}
+
+int main(int argc, char** argv)
+{
+    std::string filename = "./20250915_SHARAN_OSGB.osgb";
+
+    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(filename);
+    if (!model)
+    {
+        std::cerr << "Error: Unable to load file: " << filename << std::endl;
+        return 1;
+    }
+
+    osg::BoundingSphere bs = model->getBound();
+    std::cout << "Model center: " << bs.center().x() << ", " << bs.center().y() << ", " << bs.center().z() << std::endl;
+    std::cout << "Model radius: " << bs.radius() << std::endl;
+
+    double extrinsics[12] = {
+        -0.9655356639799625, -0.09616767134251294, -0.2418537982770954,
+        -0.08291905700679839, 0.9944737910417899, -0.06439796753550224,
+        0.24671054027465514, -0.042124276560735585, -0.9681736540454445,
+        -0.39774068678243776, 0.023064699630140467, 0.5953452132457162
+    };
+
+    double R[3][3] = {
+        {extrinsics[0], extrinsics[1], extrinsics[2]},
+        {extrinsics[3], extrinsics[4], extrinsics[5]},
+        {extrinsics[6], extrinsics[7], extrinsics[8]}
+    };
+    double t[3] = {extrinsics[9], extrinsics[10], extrinsics[11]};
+
+    // Print rotation matrix
+    std::cout << "\nRotation Matrix (R):" << std::endl;
+    for (int i = 0; i < 3; ++i) {
+        std::cout << "[";
+        for (int j = 0; j < 3; ++j) {
+            std::cout << std::setw(12) << std::setprecision(8) << std::fixed << R[i][j];
+            if (j < 2) std::cout << ", ";
+        }
+        std::cout << "]" << std::endl;
+    }
+
+    // Print translation vector
+    std::cout << "\nTranslation Vector (t):" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << t[0] 
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << t[1]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << t[2] << "]" << std::endl;
+
+    // Print the complete 4x4 extrinsics matrix
+    std::cout << "\nComplete Extrinsics Matrix (4x4):" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[0]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[1]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[2]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[9] << "]" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[3]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[4]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[5]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[10] << "]" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[6]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[7]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[8]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[11] << "]" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 1.0 << "]" << std::endl;
+
+    double cameraCenter[3] = {0, 0, 0};
+    for (int i = 0; i < 3; ++i) {
+        cameraCenter[i] = 0;
+        for (int j = 0; j < 3; ++j) {
+            cameraCenter[i] -= R[j][i] * t[j];
+        }
+    }
+
+    std::cout << "Estimated camera center (x, y, z): "
+              << cameraCenter[0] << ", "
+              << cameraCenter[1] << ", "
+              << cameraCenter[2] << std::endl;
+
+    osg::Matrixd extrinsic_osg(
+        extrinsics[0], extrinsics[1], extrinsics[2], extrinsics[9],
+        extrinsics[3], extrinsics[4], extrinsics[5], extrinsics[10],
+        extrinsics[6], extrinsics[7], extrinsics[8], extrinsics[11],
+        0.0, 0.0, 0.0, 1.0
+    );
+
+    osg::ref_ptr<osg::MatrixTransform> cameraPose = new osg::MatrixTransform();
+    cameraPose->setMatrix(extrinsic_osg);
+    cameraPose->addChild(createCameraFrustum(0.05f));
+
+    osg::ref_ptr<osg::Sphere> camCenterSphere = new osg::Sphere(
+        carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2]), 0.1f
+    );
+    osg::ref_ptr<osg::ShapeDrawable> camCenterDrawable = new osg::ShapeDrawable(camCenterSphere);
+    camCenterDrawable->setColor(osg::Vec4(1, 0, 0, 1));
+    osg::ref_ptr<osg::Geode> camCenterGeode = new osg::Geode();
+    camCenterGeode->addDrawable(camCenterDrawable);
+    camCenterGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    osg::ref_ptr<osgText::Text> text = new osgText::Text;
+    text->setCharacterSize(0.7f);
+    text->setAxisAlignment(osgText::TextBase::SCREEN);
+    text->setPosition(carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2] + 0.7f));
+    char label[128];
+    snprintf(label, sizeof(label), "Camera center:\n%.3f, %.3f, %.3f",
+             cameraCenter[0], cameraCenter[1], cameraCenter[2]);
+    text->setText(label);
+    text->setColor(osg::Vec4(1, 0, 0, 1));
+
+    osg::ref_ptr<osg::Geode> textGeode = new osg::Geode();
+    textGeode->addDrawable(text);
+    textGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    osg::ref_ptr<osgText::Text> carNameText = new osgText::Text;
+    carNameText->setCharacterSize(1.0f);
+    carNameText->setAxisAlignment(osgText::TextBase::SCREEN);
+    carNameText->setPosition(carCoord(0, 0, 1.2f));
+    carNameText->setText("Detelev");
+    carNameText->setColor(osg::Vec4(1, 1, 0, 1));
+
+    osg::ref_ptr<osg::Geode> carNameGeode = new osg::Geode();
+    carNameGeode->addDrawable(carNameText);
+    carNameGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+
+    osg::Vec3 modelCenter = bs.center();
+    float scale = bs.radius() * 0.2;
+
+    osg::ref_ptr<osg::MatrixTransform> overlayTransform = new osg::MatrixTransform;
+    overlayTransform->setMatrix(
+        osg::Matrix::scale(scale, scale, scale) *
+        osg::Matrix::translate(modelCenter)
+    );
+    overlayTransform->addChild(createAxesWithArrows(5.0f, 1.0f));
+    overlayTransform->addChild(carNameGeode);
+    overlayTransform->addChild(cameraPose.get());
+    overlayTransform->addChild(camCenterGeode);
+    overlayTransform->addChild(textGeode);
+
+    // ----------- Viewing Zones Visualization -----------
+    // struct ViewingZone {
+    //     std::vector<osg::Vec3> corners;
+    //     osg::Vec4 color;
+    //     std::string label;
+    // };
+
+    // // All 20 zones, using carCoord(x, y, z) for each point
+    // std::vector<ViewingZone> viewingZones = {
+    //     { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-0.35571788,0.174002442,0.47505936) }, osg::Vec4(1,0,1,0.7), "Zone 1" },
+    //     { { carCoord(-0.35571788,0.174002442,0.47505936), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,1,1,0.7), "Zone 2" },
+    //     { { carCoord(-0.26710974,-0.258635603,0.657716295), carCoord(-0.267144782,-0.375360344,0.615867355), carCoord(-0.496142871,-0.37498442,0.615010582), carCoord(-0.496107829,-0.25825968,0.656859521) }, osg::Vec4(1,0.5,0,0.7), "Zone 3" },
+    //     { { carCoord(-0.162393466,-0.415464107,0.675954176), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-0.552969126,-0.415006707,0.674489386) }, osg::Vec4(0.5,0,1,0.7), "Zone 4" },
+    //     { { carCoord(0.273809139,0.23876006,-0.205173977), carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(0.302683634,0.172922612,0.477520705) }, osg::Vec4(0,1,0.5,0.7), "Zone 5" },
+    //     { { carCoord(-1.014119393,0.175082273,0.472598015), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.18845044,-0.286843036,-0.048782687), carCoord(-0.981017026,0.240229574,-0.209879997) }, osg::Vec4(1,0,0.5,0.7), "Zone 6" },
+    //     { { carCoord(0.714846298,-0.117275734,0.6534199), carCoord(0.71323881,-0.32976234,0.653643236), carCoord(0.476011159,-0.327866842,0.749586808), carCoord(0.477618646,-0.115380235,0.749363472) }, osg::Vec4(0.5,1,0,0.7), "Zone 7" },
+    //     { { carCoord(-1.183722742,-0.115925105,0.740691078), carCoord(-1.184077529,-0.330924658,0.740433629), carCoord(-1.430764141,-0.330395334,0.638343178), carCoord(-1.430409353,-0.115395781,0.638600626) }, osg::Vec4(0,0.5,1,0.7), "Zone 8" },
+    //     { { carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 9" },
+    //     { { carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.423449706,-0.319716019,0.700486301) }, osg::Vec4(1,1,0,0.7), "Zone 10" },
+    //     { { carCoord(-1.138753961,-0.317886538,0.694627511), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.18845044,-0.286843036,-0.048782687) }, osg::Vec4(0,1,1,0.7), "Zone 11" },
+    //     { { carCoord(0.180655773,-0.230487853,0.733739368), carCoord(0.180549186,-0.351042018,0.70933277), carCoord(-0.190310347,-0.350433214,0.707945236), carCoord(-0.19020376,-0.229879049,0.732351834) }, osg::Vec4(1,0,1,0.7), "Zone 12" },
+    //     { { carCoord(0.180549186,-0.351042018,0.70933277), carCoord(0.152562612,-0.385024159,0.487549789), carCoord(-0.165433454,-0.388945843,0.484067994), carCoord(-0.190310347,-0.350433214,0.707945236) }, osg::Vec4(1,0.5,0,0.7), "Zone 13" },
+    //     { { carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-0.357772182,-0.716587983,0.605354763) }, osg::Vec4(0.5,0,1,0.7), "Zone 14" },
+    //     { { carCoord(0.42488276,-0.41616208,0.67818283), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.162393466,-0.415464107,0.675954176) }, osg::Vec4(0,1,0.5,0.7), "Zone 15" },
+    //     { { carCoord(-0.357772182,-0.716587983,0.605354763), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.144850863,-0.715666243,0.602402953) }, osg::Vec4(1,0,0.5,0.7), "Zone 16" },
+    //     { { carCoord(-0.552969126,-0.415006707,0.674489386), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.140231919,-0.414312832,0.672271237) }, osg::Vec4(0.5,1,0,0.7), "Zone 17" },
+    //     { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.273809139,0.23876006,-0.205173977), carCoord(-0.981017026,0.240229574,-0.209879997), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,0.5,1,0.7), "Zone 18" },
+    //     { { carCoord(0.801738997,-0.416607352,0.679606253), carCoord(-0.005293253,-1.504539913,0.09015681), carCoord(-0.409370883,-0.959619427,0.38183117), carCoord(-0.813448513,-0.41469894,0.67350553) }, osg::Vec4(1,1,0,0.7), "Zone 19" },
+    //     { { carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 20" }
+    // };
+
+    // osg::ref_ptr<osg::Group> viewingZonesGroup = new osg::Group();
+    // for (const auto& zone : viewingZones) {
+    //     bool allZero = true;
+    //     for (const auto& v : zone.corners) {
+    //         if (v.length() > 1e-6) { allZero = false; break; }
+    //     }
+    //     if (allZero) continue;
+
+    //     osg::ref_ptr<osg::MatrixTransform> zoneTransform = new osg::MatrixTransform;
+    //     zoneTransform->setMatrix(
+    //         osg::Matrix::scale(scale, scale, scale) *
+    //         osg::Matrix::translate(modelCenter)
+    //     );
+    //     zoneTransform->addChild(createViewingZoneWithLabel(zone.corners, zone.label, zone.color));
+    //     viewingZonesGroup->addChild(zoneTransform);
+    // }
+
+    osg::ref_ptr<osg::Group> root = new osg::Group();
+    root->addChild(model.get());
+    root->addChild(overlayTransform);
+    // root->addChild(viewingZonesGroup);
+
+    osgViewer::Viewer viewer;
+    viewer.setSceneData(root.get());
+    return viewer.run();
+}
