@@ -1,0 +1,42 @@
+# Python virtual environment
+venv/
+env/
+.env
+.venv
+
+# Large data files
+*.zip
+*.tar.gz
+*.7z
+*.rar
+
+# Build artifacts
+*.o
+*.exe
+*.out
+*.so
+*.dylib
+*.dll
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp
