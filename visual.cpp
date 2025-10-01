@@ -10,10 +10,12 @@
 #include <iomanip>
 #include <string>
 #include <vector>
+#include <float.h>
 
-// Swap Y and Z for car coordinate convention: X=red (left/right), Y=blue (forward), Z=green (up)
+// Desired coordinate system: X=red (left/driver side), Y=green (up/roof), Z=blue (forward)
+// NOTE: This function defines coordinates in the desired system
 inline osg::Vec3 carCoord(float x, float y, float z) {
-    return osg::Vec3(x, z, y);
+    return osg::Vec3(x, y, z);
 }
 
 // Helper to create a coordinate axes with arrowheads at the origin
@@ -32,21 +34,21 @@ osg::ref_ptr<osg::Node> createAxesWithArrows(float axisLength = 5.0f, float arro
     verts->push_back(osg::Vec3(axisLength,0,0)); verts->push_back(osg::Vec3(axisLength-arrowWing, -arrowWing*0.5, 0));
     cols->push_back(osg::Vec4(1,0,0,1)); cols->push_back(osg::Vec4(1,0,0,1));
 
-    // Y axis (blue, forward) -- reversed direction!
-    verts->push_back(osg::Vec3(0,0,0)); verts->push_back(osg::Vec3(0,-axisLength,0));
-    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
-    verts->push_back(osg::Vec3(0,-axisLength,0)); verts->push_back(osg::Vec3(arrowWing*0.5, -axisLength+arrowWing, 0));
-    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
-    verts->push_back(osg::Vec3(0,-axisLength,0)); verts->push_back(osg::Vec3(-arrowWing*0.5, -axisLength+arrowWing, 0));
-    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
+    // Y axis (green, up)
+    verts->push_back(osg::Vec3(0,0,0)); verts->push_back(osg::Vec3(0,axisLength,0));
+    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    verts->push_back(osg::Vec3(0,axisLength,0)); verts->push_back(osg::Vec3(arrowWing*0.5, axisLength-arrowWing, 0));
+    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    verts->push_back(osg::Vec3(0,axisLength,0)); verts->push_back(osg::Vec3(-arrowWing*0.5, axisLength-arrowWing, 0));
+    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
 
-    // Z axis (green, up)
+    // Z axis (blue, forward)
     verts->push_back(osg::Vec3(0,0,0)); verts->push_back(osg::Vec3(0,0,axisLength));
-    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
     verts->push_back(osg::Vec3(0,0,axisLength)); verts->push_back(osg::Vec3(0, arrowWing*0.5, axisLength-arrowWing));
-    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
     verts->push_back(osg::Vec3(0,0,axisLength)); verts->push_back(osg::Vec3(0, -arrowWing*0.5, axisLength-arrowWing));
-    cols->push_back(osg::Vec4(0,1,0,1)); cols->push_back(osg::Vec4(0,1,0,1));
+    cols->push_back(osg::Vec4(0,0,1,1)); cols->push_back(osg::Vec4(0,0,1,1));
 
     geom->setVertexArray(verts);
     osg::ref_ptr<osg::DrawArrays> drawArrays = new osg::DrawArrays(GL_LINES, 0, verts->size());
@@ -66,12 +68,12 @@ osg::ref_ptr<osg::Node> createCameraFrustum(float sphereRadius = 0.1f)
     osg::ref_ptr<osg::Geometry> geom = new osg::Geometry();
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array();
     float w = 0.2f, h = 0.15f, d = 0.3f;
-    // Swap y/z for car convention
+    // Sharan coordinate system: X=left, Y=up, Z=forward
     vertices->push_back(carCoord(0, 0, 0));
-    vertices->push_back(carCoord(-w, d, -h));
-    vertices->push_back(carCoord(w, d, -h));
-    vertices->push_back(carCoord(w, d, h));
-    vertices->push_back(carCoord(-w, d, h));
+    vertices->push_back(carCoord(-w, -h, d));
+    vertices->push_back(carCoord(w, -h, d));
+    vertices->push_back(carCoord(w, h, d));
+    vertices->push_back(carCoord(-w, h, d));
     geom->setVertexArray(vertices);
 
     osg::ref_ptr<osg::DrawElementsUInt> indices = new osg::DrawElementsUInt(GL_LINES);
@@ -118,8 +120,13 @@ osg::ref_ptr<osg::Group> createViewingZoneWithLabel(const std::vector<osg::Vec3>
     geom->setVertexArray(verts);
     geom->addPrimitiveSet(new osg::DrawArrays(GL_LINE_STRIP, 0, verts->size()));
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array();
-    colors->push_back(color);
+    colors->push_back(osg::Vec4(color.r(), color.g(), color.b(), 1.0f)); // Make outline fully opaque
     geom->setColorArray(colors, osg::Array::BIND_OVERALL);
+    
+    // Make lines more visible
+    osg::StateSet* lineState = geom->getOrCreateStateSet();
+    lineState->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    lineState->setMode(GL_DEPTH_TEST, osg::StateAttribute::ON);
 
     // Fill polygon
     osg::ref_ptr<osg::Geometry> fillGeom = new osg::Geometry();
@@ -128,11 +135,16 @@ osg::ref_ptr<osg::Group> createViewingZoneWithLabel(const std::vector<osg::Vec3>
     fillGeom->setVertexArray(fillVerts);
     fillGeom->addPrimitiveSet(new osg::DrawArrays(GL_POLYGON, 0, fillVerts->size()));
     osg::ref_ptr<osg::Vec4Array> fillColors = new osg::Vec4Array();
-    fillColors->push_back(osg::Vec4(color.r(), color.g(), color.b(), 0.2));
+    fillColors->push_back(osg::Vec4(color.r(), color.g(), color.b(), color.a() * 0.5f)); // Use color alpha
     fillGeom->setColorArray(fillColors, osg::Array::BIND_OVERALL);
-    fillGeom->getOrCreateStateSet()->setMode(GL_BLEND, osg::StateAttribute::ON);
-    fillGeom->getOrCreateStateSet()->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
-    fillGeom->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    
+    // Better rendering setup for visibility
+    osg::StateSet* fillState = fillGeom->getOrCreateStateSet();
+    fillState->setMode(GL_BLEND, osg::StateAttribute::ON);
+    fillState->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    fillState->setMode(GL_DEPTH_TEST, osg::StateAttribute::ON);
+    fillState->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
+    fillState->setRenderBinDetails(100, "DepthSortedBin"); // Render after opaque objects
 
     geode->addDrawable(fillGeom);
     geode->addDrawable(geom);
@@ -164,9 +176,49 @@ osg::ref_ptr<osg::Group> createViewingZoneWithLabel(const std::vector<osg::Vec3>
     return group;
 }
 
+void printUsage(const char* programName) {
+    std::cout << "Usage: " << programName << " [zone <number>]" << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  zone <number>  Display only the specified zone (1-20)" << std::endl;
+    std::cout << "  (no args)      Display all zones" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Examples:" << std::endl;
+    std::cout << "  " << programName << "           # Display all zones" << std::endl;
+    std::cout << "  " << programName << " zone 9    # Display only Zone 9" << std::endl;
+    std::cout << "  " << programName << " zone 15   # Display only Zone 15" << std::endl;
+}
+
 int main(int argc, char** argv)
 {
-    std::string filename = "./20250915_SHARAN_OSGB.osgb";
+    // *** PARSE COMMAND LINE ARGUMENTS ***
+    int displayZoneNumber = 0; // Default: display all zones
+    
+    // Parse arguments
+    if (argc > 1) {
+        if (argc == 3 && std::string(argv[1]) == "zone") {
+            try {
+                displayZoneNumber = std::stoi(argv[2]);
+                if (displayZoneNumber < 1 || displayZoneNumber > 20) {
+                    std::cerr << "Error: Zone number must be between 1 and 20" << std::endl;
+                    printUsage(argv[0]);
+                    return 1;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "Error: Invalid zone number '" << argv[2] << "'" << std::endl;
+                printUsage(argv[0]);
+                return 1;
+            }
+        } else if (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h") {
+            printUsage(argv[0]);
+            return 0;
+        } else {
+            std::cerr << "Error: Invalid arguments" << std::endl;
+            printUsage(argv[0]);
+            return 1;
+        }
+    }
+
+    std::string filename = "carmodels/Sharan/Sharan.osgb";
 
     osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(filename);
     if (!model)
@@ -178,7 +230,14 @@ int main(int argc, char** argv)
     osg::BoundingSphere bs = model->getBound();
     std::cout << "Model center: " << bs.center().x() << ", " << bs.center().y() << ", " << bs.center().z() << std::endl;
     std::cout << "Model radius: " << bs.radius() << std::endl;
+    
+    // Calculate model bounding box for comparison with zones
+    osg::Vec3 modelMin = bs.center() - osg::Vec3(bs.radius(), bs.radius(), bs.radius());
+    osg::Vec3 modelMax = bs.center() + osg::Vec3(bs.radius(), bs.radius(), bs.radius());
+    std::cout << "Model bounds: Min(" << modelMin.x() << ", " << modelMin.y() << ", " << modelMin.z() << ")" << std::endl;
+    std::cout << "              Max(" << modelMax.x() << ", " << modelMax.y() << ", " << modelMax.z() << ")" << std::endl;
 
+    // Use ORIGINAL extrinsics - coordinate transformation handled by scene transforms
     double extrinsics[12] = {
         -0.9655356639799625, -0.09616767134251294, -0.2418537982770954,
         -0.08291905700679839, 0.9944737910417899, -0.06439796753550224,
@@ -280,7 +339,7 @@ int main(int argc, char** argv)
     carNameText->setCharacterSize(1.0f);
     carNameText->setAxisAlignment(osgText::TextBase::SCREEN);
     carNameText->setPosition(carCoord(0, 0, 1.2f));
-    carNameText->setText("Detelev");
+    carNameText->setText("Sharan");
     carNameText->setColor(osg::Vec4(1, 1, 0, 1));
 
     osg::ref_ptr<osg::Geode> carNameGeode = new osg::Geode();
@@ -302,59 +361,136 @@ int main(int argc, char** argv)
     overlayTransform->addChild(textGeode);
 
     // ----------- Viewing Zones Visualization -----------
-    // struct ViewingZone {
-    //     std::vector<osg::Vec3> corners;
-    //     osg::Vec4 color;
-    //     std::string label;
-    // };
+    struct ViewingZone {
+        std::vector<osg::Vec3> corners;
+        osg::Vec4 color;
+        std::string label;
+    };
 
-    // // All 20 zones, using carCoord(x, y, z) for each point
-    // std::vector<ViewingZone> viewingZones = {
-    //     { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-0.35571788,0.174002442,0.47505936) }, osg::Vec4(1,0,1,0.7), "Zone 1" },
-    //     { { carCoord(-0.35571788,0.174002442,0.47505936), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,1,1,0.7), "Zone 2" },
-    //     { { carCoord(-0.26710974,-0.258635603,0.657716295), carCoord(-0.267144782,-0.375360344,0.615867355), carCoord(-0.496142871,-0.37498442,0.615010582), carCoord(-0.496107829,-0.25825968,0.656859521) }, osg::Vec4(1,0.5,0,0.7), "Zone 3" },
-    //     { { carCoord(-0.162393466,-0.415464107,0.675954176), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-0.552969126,-0.415006707,0.674489386) }, osg::Vec4(0.5,0,1,0.7), "Zone 4" },
-    //     { { carCoord(0.273809139,0.23876006,-0.205173977), carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(0.302683634,0.172922612,0.477520705) }, osg::Vec4(0,1,0.5,0.7), "Zone 5" },
-    //     { { carCoord(-1.014119393,0.175082273,0.472598015), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.18845044,-0.286843036,-0.048782687), carCoord(-0.981017026,0.240229574,-0.209879997) }, osg::Vec4(1,0,0.5,0.7), "Zone 6" },
-    //     { { carCoord(0.714846298,-0.117275734,0.6534199), carCoord(0.71323881,-0.32976234,0.653643236), carCoord(0.476011159,-0.327866842,0.749586808), carCoord(0.477618646,-0.115380235,0.749363472) }, osg::Vec4(0.5,1,0,0.7), "Zone 7" },
-    //     { { carCoord(-1.183722742,-0.115925105,0.740691078), carCoord(-1.184077529,-0.330924658,0.740433629), carCoord(-1.430764141,-0.330395334,0.638343178), carCoord(-1.430409353,-0.115395781,0.638600626) }, osg::Vec4(0,0.5,1,0.7), "Zone 8" },
-    //     { { carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 9" },
-    //     { { carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.423449706,-0.319716019,0.700486301) }, osg::Vec4(1,1,0,0.7), "Zone 10" },
-    //     { { carCoord(-1.138753961,-0.317886538,0.694627511), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.18845044,-0.286843036,-0.048782687) }, osg::Vec4(0,1,1,0.7), "Zone 11" },
-    //     { { carCoord(0.180655773,-0.230487853,0.733739368), carCoord(0.180549186,-0.351042018,0.70933277), carCoord(-0.190310347,-0.350433214,0.707945236), carCoord(-0.19020376,-0.229879049,0.732351834) }, osg::Vec4(1,0,1,0.7), "Zone 12" },
-    //     { { carCoord(0.180549186,-0.351042018,0.70933277), carCoord(0.152562612,-0.385024159,0.487549789), carCoord(-0.165433454,-0.388945843,0.484067994), carCoord(-0.190310347,-0.350433214,0.707945236) }, osg::Vec4(1,0.5,0,0.7), "Zone 13" },
-    //     { { carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-0.357772182,-0.716587983,0.605354763) }, osg::Vec4(0.5,0,1,0.7), "Zone 14" },
-    //     { { carCoord(0.42488276,-0.41616208,0.67818283), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.162393466,-0.415464107,0.675954176) }, osg::Vec4(0,1,0.5,0.7), "Zone 15" },
-    //     { { carCoord(-0.357772182,-0.716587983,0.605354763), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.144850863,-0.715666243,0.602402953) }, osg::Vec4(1,0,0.5,0.7), "Zone 16" },
-    //     { { carCoord(-0.552969126,-0.415006707,0.674489386), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.140231919,-0.414312832,0.672271237) }, osg::Vec4(0.5,1,0,0.7), "Zone 17" },
-    //     { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.273809139,0.23876006,-0.205173977), carCoord(-0.981017026,0.240229574,-0.209879997), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,0.5,1,0.7), "Zone 18" },
-    //     { { carCoord(0.801738997,-0.416607352,0.679606253), carCoord(-0.005293253,-1.504539913,0.09015681), carCoord(-0.409370883,-0.959619427,0.38183117), carCoord(-0.813448513,-0.41469894,0.67350553) }, osg::Vec4(1,1,0,0.7), "Zone 19" },
-    //     { { carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 20" }
-    // };
+    // All 20 zones, using carCoord(x, y, z) for each point
+    // Note: If coordinates are in millimeters, divide by 1000 to convert to meters
+    std::vector<ViewingZone> viewingZones = {
+        { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-0.35571788,0.174002442,0.47505936) }, osg::Vec4(1,0,1,0.7), "Zone 1" },
+        { { carCoord(-0.35571788,0.174002442,0.47505936), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,1,1,0.7), "Zone 2" },
+        { { carCoord(-0.26710974,-0.258635603,0.657716295), carCoord(-0.267144782,-0.375360344,0.615867355), carCoord(-0.496142871,-0.37498442,0.615010582), carCoord(-0.496107829,-0.25825968,0.656859521) }, osg::Vec4(1,0.5,0,0.7), "Zone 3" },
+        { { carCoord(-0.162393466,-0.415464107,0.675954176), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-0.552969126,-0.415006707,0.674489386) }, osg::Vec4(0.5,0,1,0.7), "Zone 4" },
+        { { carCoord(0.273809139,0.23876006,-0.205173977), carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(0.302683634,0.172922612,0.477520705) }, osg::Vec4(0,1,0.5,0.7), "Zone 5" },
+        { { carCoord(-1.014119393,0.175082273,0.472598015), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.18845044,-0.286843036,-0.048782687), carCoord(-0.981017026,0.240229574,-0.209879997) }, osg::Vec4(1,0,0.5,0.7), "Zone 6" },
+        { { carCoord(0.714846298,-0.117275734,0.6534199), carCoord(0.71323881,-0.32976234,0.653643236), carCoord(0.476011159,-0.327866842,0.749586808), carCoord(0.477618646,-0.115380235,0.749363472) }, osg::Vec4(0.5,1,0,0.7), "Zone 7" },
+        { { carCoord(-1.183722742,-0.115925105,0.740691078), carCoord(-1.184077529,-0.330924658,0.740433629), carCoord(-1.430764141,-0.330395334,0.638343178), carCoord(-1.430409353,-0.115395781,0.638600626) }, osg::Vec4(0,0.5,1,0.7), "Zone 8" },
+        { {carCoord(-0.19330525,0.0886954565,0.633054196), carCoord(-0.1942135828,-0.0105370244,0.6372395534), carCoord(-0.4754007803,-0.0105370244,0.576214529), carCoord(-0.4744924476,0.0886954565,0.5720291724) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 9" },
+        { { carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.423449706,-0.319716019,0.700486301) }, osg::Vec4(1,1,0,0.7), "Zone 10" },
+        { { carCoord(-1.138753961,-0.317886538,0.694627511), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.18845044,-0.286843036,-0.048782687) }, osg::Vec4(0,1,1,0.7), "Zone 11" },
+        { { carCoord(0.180655773,-0.230487853,0.733739368), carCoord(0.180549186,-0.351042018,0.70933277), carCoord(-0.190310347,-0.350433214,0.707945236), carCoord(-0.19020376,-0.229879049,0.732351834) }, osg::Vec4(1,0,1,0.7), "Zone 12" },
+        { { carCoord(0.180549186,-0.351042018,0.70933277), carCoord(0.152562612,-0.385024159,0.487549789), carCoord(-0.165433454,-0.388945843,0.484067994), carCoord(-0.190310347,-0.350433214,0.707945236) }, osg::Vec4(1,0.5,0,0.7), "Zone 13" },
+        { { carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-0.357772182,-0.716587983,0.605354763) }, osg::Vec4(0.5,0,1,0.7), "Zone 14" },
+        { { carCoord(0.42488276,-0.41616208,0.67818283), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.162393466,-0.415464107,0.675954176) }, osg::Vec4(0,1,0.5,0.7), "Zone 15" },
+        { { carCoord(-0.357772182,-0.716587983,0.605354763), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.144850863,-0.715666243,0.602402953) }, osg::Vec4(1,0,0.5,0.7), "Zone 16" },
+        { { carCoord(-0.552969126,-0.415006707,0.674489386), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.140231919,-0.414312832,0.672271237) }, osg::Vec4(0.5,1,0,0.7), "Zone 17" },
+        { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.273809139,0.23876006,-0.205173977), carCoord(-0.981017026,0.240229574,-0.209879997), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,0.5,1,0.7), "Zone 18" },
+        { { carCoord(0.801738997,-0.416607352,0.679606253), carCoord(-0.005293253,-1.504539913,0.09015681), carCoord(-0.409370883,-0.959619427,0.38183117), carCoord(-0.813448513,-0.41469894,0.67350553) }, osg::Vec4(1,1,0,0.7), "Zone 19" },
+        { { carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 20" }
+    };
 
-    // osg::ref_ptr<osg::Group> viewingZonesGroup = new osg::Group();
-    // for (const auto& zone : viewingZones) {
-    //     bool allZero = true;
-    //     for (const auto& v : zone.corners) {
-    //         if (v.length() > 1e-6) { allZero = false; break; }
-    //     }
-    //     if (allZero) continue;
+    osg::ref_ptr<osg::Group> viewingZonesGroup = new osg::Group();
+    
+    if (displayZoneNumber == 0) {
+        std::cout << "\n=== CREATING ALL VIEWING ZONES ===" << std::endl;
+    } else {
+        std::cout << "\n=== CREATING ONLY ZONE " << displayZoneNumber << " ===" << std::endl;
+    }
+    
+    float metersToMmScale = 1000.0f;
+    int zoneCount = 0;
+    
+    for (int i = 0; i < viewingZones.size(); ++i) {
+        const auto& zone = viewingZones[i];
+        int zoneNumber = i + 1; // Zone numbers are 1-based
+        
+        // Skip if we only want a specific zone and this isn't it
+        if (displayZoneNumber > 0 && zoneNumber != displayZoneNumber) {
+            continue;
+        }
+        
+        // Skip zones with all zero coordinates
+        bool allZero = true;
+        for (const auto& v : zone.corners) {
+            if (v.length() > 1e-6) { allZero = false; break; }
+        }
+        if (allZero) {
+            std::cout << "Skipping " << zone.label << " - all zero coordinates" << std::endl;
+            continue;
+        }
+        
+        // Calculate zone center for debugging
+        osg::Vec3 minCorner(FLT_MAX, FLT_MAX, FLT_MAX);
+        osg::Vec3 maxCorner(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+        
+        for (const auto& v : zone.corners) {
+            if (v.x() < minCorner.x()) minCorner.x() = v.x();
+            if (v.y() < minCorner.y()) minCorner.y() = v.y();
+            if (v.z() < minCorner.z()) minCorner.z() = v.z();
+            if (v.x() > maxCorner.x()) maxCorner.x() = v.x();
+            if (v.y() > maxCorner.y()) maxCorner.y() = v.y();
+            if (v.z() > maxCorner.z()) maxCorner.z() = v.z();
+        }
+        
+        osg::Vec3 center = (minCorner + maxCorner) * 0.5f;
+        std::cout << "Creating " << zone.label << " - center (mm): (" 
+                  << center.x() * metersToMmScale << ", " 
+                  << center.y() * metersToMmScale << ", " 
+                  << center.z() * metersToMmScale << ")" << std::endl;
+        
+        // Create transform for this zone
+        osg::ref_ptr<osg::MatrixTransform> zoneTransform = new osg::MatrixTransform;
+        
+        // Use the same transformation that worked for Zone 1: just scale to mm, no rotation
+        osg::Matrix transform = osg::Matrix::scale(metersToMmScale, metersToMmScale, metersToMmScale);
+        zoneTransform->setMatrix(transform);
+        
+        // Make zones visible with their original colors but more opaque
+        osg::Vec4 visibleColor = zone.color;
+        visibleColor.a() = 0.8f; // More opaque than original
+        
+        zoneTransform->addChild(createViewingZoneWithLabel(zone.corners, zone.label, visibleColor));
+        viewingZonesGroup->addChild(zoneTransform);
+        zoneCount++;
+    }
+    
+    std::cout << "=== Created " << zoneCount << " viewing zone(s) ===" << std::endl;
 
-    //     osg::ref_ptr<osg::MatrixTransform> zoneTransform = new osg::MatrixTransform;
-    //     zoneTransform->setMatrix(
-    //         osg::Matrix::scale(scale, scale, scale) *
-    //         osg::Matrix::translate(modelCenter)
-    //     );
-    //     zoneTransform->addChild(createViewingZoneWithLabel(zone.corners, zone.label, zone.color));
-    //     viewingZonesGroup->addChild(zoneTransform);
-    // }
+    // Apply Sharan model transformation to match coordinate system
+    osg::ref_ptr<osg::MatrixTransform> sharanTransform = new osg::MatrixTransform();
+    // Use the standard -90° X rotation as in original carmodels.json
+    // This should orient the car properly with our coordinate system
+    sharanTransform->setMatrix(osg::Matrix::rotate(osg::DegreesToRadians(-90.0), osg::X_AXIS));
+    sharanTransform->addChild(model.get());
 
     osg::ref_ptr<osg::Group> root = new osg::Group();
-    root->addChild(model.get());
+    root->addChild(sharanTransform);
     root->addChild(overlayTransform);
-    // root->addChild(viewingZonesGroup);
+    root->addChild(viewingZonesGroup);
+
+    // Debug scene graph structure
+    std::cout << "\nScene Graph Structure:" << std::endl;
+    std::cout << "Root children: " << root->getNumChildren() << std::endl;
+    std::cout << "  - Sharan transform children: " << sharanTransform->getNumChildren() << std::endl;
+    std::cout << "  - Overlay transform children: " << overlayTransform->getNumChildren() << std::endl;
+    std::cout << "  - Viewing zones group children: " << viewingZonesGroup->getNumChildren() << std::endl;
 
     osgViewer::Viewer viewer;
     viewer.setSceneData(root.get());
+    
+    if (displayZoneNumber > 0) {
+        std::cout << "\nDisplaying only Zone " << displayZoneNumber << std::endl;
+        if (displayZoneNumber <= viewingZones.size()) {
+            std::cout << "Zone " << displayZoneNumber << " corner 1: " 
+                      << viewingZones[displayZoneNumber-1].corners[0].x() << ", " 
+                      << viewingZones[displayZoneNumber-1].corners[0].y() << ", " 
+                      << viewingZones[displayZoneNumber-1].corners[0].z() << std::endl;
+        }
+    }
+    
+    std::cout << "\nStarting viewer..." << std::endl;
     return viewer.run();
 }

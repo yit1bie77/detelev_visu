@@ -142,6 +142,44 @@ viewing_targets_7_coordinates: [
 -0.115395781 
 0.638600626 
 ] 
+
+
+  "viewing_targets_7_category": 1,
+              "viewing_targets_7_gaze_region": 8,
+              "viewing_targets_7_highway_speed_enabled": 0,
+              "viewing_targets_7_priority": 3,
+              "viewing_targets_7_coordinates": [
+                -1.183722742,
+                -0.115925105,
+                0.740691078,
+                -1.184077529,
+                -0.330924658,
+                0.740433629,
+                -1.430764141,
+                -0.330395334,
+                0.638343178,
+                -1.430409353,
+                -0.115395781,
+                0.638600626
+              ],
+              "viewing_targets_8_category": 1,
+              "viewing_targets_8_gaze_region": 9,
+              "viewing_targets_8_highway_speed_enabled": 1,
+              "viewing_targets_8_priority": 1,
+              "viewing_targets_8_coordinates": [
+                -0.19330525,
+                0.0886954565,
+                0.633054196,
+                -0.1942135828,
+                -0.0105370244,
+                0.6372395534,
+                -0.4754007803,
+                -0.0105370244,
+                0.576214529,
+                -0.4744924476,
+                0.0886954565,
+                0.5720291724
+              ],
 viewing_targets_8_category: 1
 viewing_targets_8_gaze_region: 9
 viewing_targets_8_highway_speed_enabled: 1
