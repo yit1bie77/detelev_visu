@@ -354,7 +354,9 @@ int main(int argc, char** argv)
         osg::Matrix::scale(scale, scale, scale) *
         osg::Matrix::translate(modelCenter)
     );
-    overlayTransform->addChild(createAxesWithArrows(5.0f, 1.0f));
+    // (Removed axes here) The axes inside the overlay were scaled & translated,
+    // causing them to appear in the wrong position relative to the viewing zones.
+    // We'll add a world-space axes object at the true origin below.
     overlayTransform->addChild(carNameGeode);
     overlayTransform->addChild(cameraPose.get());
     overlayTransform->addChild(camCenterGeode);
@@ -467,8 +469,11 @@ int main(int argc, char** argv)
     sharanTransform->addChild(model.get());
 
     osg::ref_ptr<osg::Group> root = new osg::Group();
-    root->addChild(sharanTransform);
-    root->addChild(overlayTransform);
+    root->addChild(sharanTransform);          // Car (rotated -90° X)
+    root->addChild(overlayTransform);         // Text, camera frustum, etc.
+    // World coordinate axes at origin, in millimeters (matching zones after 1000x scaling).
+    // Length chosen to cover vehicle footprint & zones clearly.
+    root->addChild(createAxesWithArrows(1500.0f, 300.0f));
     root->addChild(viewingZonesGroup);
 
     // Debug scene graph structure

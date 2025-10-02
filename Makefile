@@ -1,6 +1,6 @@
 CXX = g++
-CXXFLAGS = -g -std=c++11
-LDFLAGS = -losg -losgDB -losgViewer -losgText
+CXXFLAGS = -g -std=c++11 -I.
+LDFLAGS = -losg -losgDB -losgViewer -losgText -losgGA
 TARGET = visual
 SRC = visual.cpp
 PREFIX = /usr/local
