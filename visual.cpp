@@ -288,32 +288,28 @@ int main(int argc, char** argv)
               << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
               << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 1.0 << "]" << std::endl;
 
-    double cameraCenter[3] = {0, 0, 0};
-    for (int i = 0; i < 3; ++i) {
-        cameraCenter[i] = 0;
-        for (int j = 0; j < 3; ++j) {
-            cameraCenter[i] -= R[j][i] * t[j];
-        }
-    }
+    // This scale factor is used for zones, camera, and frustum
+    float metersToMmScale = 1000.0f;
 
-    std::cout << "Estimated camera center (x, y, z): "
+    // Per our analysis, the camera center is the translation part of the extrinsics.
+    double cameraCenter[3] = {t[0], t[1], t[2]};
+
+    std::cout << "Estimated camera center (m): "
               << cameraCenter[0] << ", "
               << cameraCenter[1] << ", "
               << cameraCenter[2] << std::endl;
 
-    osg::Matrixd extrinsic_osg(
-        extrinsics[0], extrinsics[1], extrinsics[2], extrinsics[9],
-        extrinsics[3], extrinsics[4], extrinsics[5], extrinsics[10],
-        extrinsics[6], extrinsics[7], extrinsics[8], extrinsics[11],
-        0.0, 0.0, 0.0, 1.0
-    );
-
+    // The frustum's tip is at (0,0,0) in its local coordinates.
+    // We scale it to make it visible in the millimeter-scale world.
     osg::ref_ptr<osg::MatrixTransform> cameraPose = new osg::MatrixTransform();
-    cameraPose->setMatrix(extrinsic_osg);
+    float frustumScale = metersToMmScale * 0.7f; // Reduce size by 30%
+    cameraPose->setMatrix(osg::Matrix::scale(frustumScale, frustumScale, frustumScale)); 
     cameraPose->addChild(createCameraFrustum(0.05f));
 
+    // The red sphere is placed at the calculated camera center, scaled to millimeters.
+    osg::Vec3 camCenterMm = carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2]) * metersToMmScale;
     osg::ref_ptr<osg::Sphere> camCenterSphere = new osg::Sphere(
-        carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2]), 0.1f
+        camCenterMm, 20.0f // Radius of 20mm (50% of previous 40mm)
     );
     osg::ref_ptr<osg::ShapeDrawable> camCenterDrawable = new osg::ShapeDrawable(camCenterSphere);
     camCenterDrawable->setColor(osg::Vec4(1, 0, 0, 1));
@@ -322,11 +318,11 @@ int main(int argc, char** argv)
     camCenterGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
 
     osg::ref_ptr<osgText::Text> text = new osgText::Text;
-    text->setCharacterSize(0.7f);
+    text->setCharacterSize(80.0f); // Increase size for mm scale
     text->setAxisAlignment(osgText::TextBase::SCREEN);
-    text->setPosition(carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2] + 0.7f));
+    text->setPosition(camCenterMm + osg::Vec3(0, 0, 100.0f)); // Offset by 100mm
     char label[128];
-    snprintf(label, sizeof(label), "Camera center:\n%.3f, %.3f, %.3f",
+    snprintf(label, sizeof(label), "Camera center:\n%.3f, %.3f, %.3f (m)",
              cameraCenter[0], cameraCenter[1], cameraCenter[2]);
     text->setText(label);
     text->setColor(osg::Vec4(1, 0, 0, 1));
@@ -349,18 +345,17 @@ int main(int argc, char** argv)
     osg::Vec3 modelCenter = bs.center();
     float scale = bs.radius() * 0.2;
 
+    // This transform is only for the car name text, to keep it near the car model.
     osg::ref_ptr<osg::MatrixTransform> overlayTransform = new osg::MatrixTransform;
     overlayTransform->setMatrix(
         osg::Matrix::scale(scale, scale, scale) *
         osg::Matrix::translate(modelCenter)
     );
-    // (Removed axes here) The axes inside the overlay were scaled & translated,
-    // causing them to appear in the wrong position relative to the viewing zones.
-    // We'll add a world-space axes object at the true origin below.
     overlayTransform->addChild(carNameGeode);
-    overlayTransform->addChild(cameraPose.get());
-    overlayTransform->addChild(camCenterGeode);
-    overlayTransform->addChild(textGeode);
+    // The camera frustum and red circle are NO LONGER here. They are added to the root directly.
+    // overlayTransform->addChild(cameraPose.get());
+    // overlayTransform->addChild(camCenterGeode);
+    // overlayTransform->addChild(textGeode);
 
     // ----------- Viewing Zones Visualization -----------
     struct ViewingZone {
@@ -402,7 +397,6 @@ int main(int argc, char** argv)
         std::cout << "\n=== CREATING ONLY ZONE " << displayZoneNumber << " ===" << std::endl;
     }
     
-    float metersToMmScale = 1000.0f;
     int zoneCount = 0;
     
     for (int i = 0; i < viewingZones.size(); ++i) {
@@ -470,7 +464,10 @@ int main(int argc, char** argv)
 
     osg::ref_ptr<osg::Group> root = new osg::Group();
     root->addChild(sharanTransform);          // Car (rotated -90° X)
-    root->addChild(overlayTransform);         // Text, camera frustum, etc.
+    root->addChild(overlayTransform);         // Car name text
+    root->addChild(cameraPose.get());         // Frustum at origin
+    root->addChild(camCenterGeode);           // Red circle at camera center
+    root->addChild(textGeode);                // Red circle's label
     // World coordinate axes at origin, in millimeters (matching zones after 1000x scaling).
     // Length chosen to cover vehicle footprint & zones clearly.
     root->addChild(createAxesWithArrows(1500.0f, 300.0f));
