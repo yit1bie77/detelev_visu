@@ -304,7 +304,10 @@ int main(int argc, char** argv)
     osg::ref_ptr<osg::MatrixTransform> cameraPose = new osg::MatrixTransform();
     float frustumScale = metersToMmScale * 0.7f; // Reduce size by 30%
     cameraPose->setMatrix(osg::Matrix::scale(frustumScale, frustumScale, frustumScale)); 
-    cameraPose->addChild(createCameraFrustum(0.05f));
+    // The red circle has a 20mm radius. We want the blue origin sphere to match.
+    // Its radius is specified in meters and will be scaled by frustumScale.
+    // So, radius_in_meters = 20.0f / frustumScale.
+    cameraPose->addChild(createCameraFrustum(20.0f / frustumScale));
 
     // The red sphere is placed at the calculated camera center, scaled to millimeters.
     osg::Vec3 camCenterMm = carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2]) * metersToMmScale;
@@ -432,10 +435,10 @@ int main(int argc, char** argv)
         }
         
         osg::Vec3 center = (minCorner + maxCorner) * 0.5f;
-        std::cout << "Creating " << zone.label << " - center (mm): (" 
-                  << center.x() * metersToMmScale << ", " 
-                  << center.y() * metersToMmScale << ", " 
-                  << center.z() * metersToMmScale << ")" << std::endl;
+        // std::cout << "Creating " << zone.label << " - center (mm): (" 
+        //           << center.x() * metersToMmScale << ", " 
+        //           << center.y() * metersToMmScale << ", " 
+        //           << center.z() * metersToMmScale << ")" << std::endl;
         
         // Create transform for this zone
         osg::ref_ptr<osg::MatrixTransform> zoneTransform = new osg::MatrixTransform;
@@ -467,7 +470,7 @@ int main(int argc, char** argv)
     root->addChild(overlayTransform);         // Car name text
     root->addChild(cameraPose.get());         // Frustum at origin
     root->addChild(camCenterGeode);           // Red circle at camera center
-    root->addChild(textGeode);                // Red circle's label
+    // root->addChild(textGeode);             // Red circle's label - HIDDEN
     // World coordinate axes at origin, in millimeters (matching zones after 1000x scaling).
     // Length chosen to cover vehicle footprint & zones clearly.
     root->addChild(createAxesWithArrows(1500.0f, 300.0f));
