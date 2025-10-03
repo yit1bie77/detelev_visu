@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "ref_ptr": "cpp"
+        "ref_ptr": "cpp",
+        "group": "cpp",
+        "trackballmanipulator": "cpp"
     }
 }

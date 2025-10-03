@@ -6,6 +6,7 @@
 #include <osg/Geometry>
 #include <osg/ShapeDrawable>
 #include <osgText/Text>
+#include <osgGA/TrackballManipulator>
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -174,6 +175,32 @@ osg::ref_ptr<osg::Group> createViewingZoneWithLabel(const std::vector<osg::Vec3>
     group->addChild(zoneTextGeode);
 
     return group;
+}
+
+void setupInitialCameraView(osgViewer::Viewer& viewer, osg::Node* modelNode)
+{
+    // Set up camera view from behind the car - further back for better overview
+    // In your coordinate system: X=left/right, Y=up/down, Z=forward/backward
+    // Position camera much further behind the car (negative Z) and elevated (positive Y)
+    osg::Vec3d eye(0, -200, -5000);       // Much further behind and higher up
+    osg::Vec3d center(0.0, 0.0, 0.0);   // Look at the origin (car center)
+    osg::Vec3d up(0.0, 1.0, 0.0);       // Y is up
+
+    std::cout << "Setting up camera view from behind the car:" << std::endl;
+    std::cout << "  Eye position: " << eye.x() << ", " << eye.y() << ", " << eye.z() << std::endl;
+    std::cout << "  Look at center: " << center.x() << ", " << center.y() << ", " << center.z() << std::endl;
+    std::cout << "  Up vector: " << up.x() << ", " << up.y() << ", " << up.z() << std::endl;
+
+    // Create and set a new TrackballManipulator explicitly
+    osg::ref_ptr<osgGA::TrackballManipulator> manipulator = new osgGA::TrackballManipulator();
+    viewer.setCameraManipulator(manipulator.get());
+    
+    // Set the home position
+    manipulator->setHomePosition(eye, center, up);
+    manipulator->home(1); // Go to home position immediately
+    
+    // Also set the viewer's camera directly for the initial frame.
+    viewer.getCamera()->setViewMatrixAsLookAt(eye, center, up);
 }
 
 void printUsage(const char* programName) {
@@ -485,6 +512,9 @@ int main(int argc, char** argv)
 
     osgViewer::Viewer viewer;
     viewer.setSceneData(root.get());
+
+    // Set the initial camera view using the new refactored function.
+    setupInitialCameraView(viewer, sharanTransform.get());
     
     if (displayZoneNumber > 0) {
         std::cout << "\nDisplaying only Zone " << displayZoneNumber << std::endl;
@@ -497,5 +527,6 @@ int main(int argc, char** argv)
     }
     
     std::cout << "\nStarting viewer..." << std::endl;
+    viewer.home(); // Explicitly go to the home position we defined
     return viewer.run();
 }
