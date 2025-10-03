@@ -14,20 +14,98 @@ A 3D visualization application for viewing car models with viewing zones using O
 ## Usage
 
 ```bash
-# Display all zones
+# Display all zones with default Sharan model
 ./visual
 
-# Display only a specific zone (1-20)
+# Display only a specific zone (1-20) with default model
 ./visual zone 9
 ./visual zone 15
+
+# Use different car models (loads from carmodels.json)
+./visual model Golf7
+./visual model Lincoln
+./visual model Nissan
 
 # Help
 ./visual --help
 ```
 
+The application now supports multiple car models through the `carmodels.json` configuration file. Each model can have its own:
+- 3D model file path
+- Rotation transformations (angle and axis)
+- Scale transformations  
+- Translation transformations
+
+The visualization will automatically apply the correct transformations for each car model.
+
 ## Configuration
 
-The application uses JSON configuration files located in `carmodels/Sharan/config/`:
+### Car Models (`carmodels.json`)
+
+The application supports multiple car models through the root-level `carmodels.json` file:
+
+```json
+{
+  "Sharan": {
+    "path": "carmodels/Sharan/Sharan.osgb",
+    "transformations": [
+      {
+        "type": "rotate",
+        "angle": 90,
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      {
+        "type": "scale",
+        "value": 1
+      },
+      {
+        "type": "translate",
+        "x": -815,
+        "y": -1118,
+        "z": 50
+      }
+    ]
+  }
+}
+```
+
+Each model defines:
+- **path**: Relative path to the 3D model file (.osgb)
+- **transformations**: Array of transformations applied in order:
+  - `rotate`: Rotation with angle (degrees) and axis (x,y,z)
+  - `scale`: Uniform scaling by value
+  - `translate`: Translation by (x,y,z) coordinates
+
+#### Transformation Architecture
+
+**Important**: The car model and viewing zones are transformed differently:
+
+1. **Car Model**: Gets ALL transformations from `carmodels.json`
+   - Rotation, scale, and translation transformations are applied in sequence
+   - This positions and orients the 3D car model correctly
+
+2. **Viewing Zones**: Get ONLY millimeter scaling (1000x)
+   - Zone coordinates are already defined relative to the transformed car model
+   - Applying car transformations to zones would cause double-transformation
+   - Only conversion from meters to millimeters is needed
+
+**Example for Sharan model:**
+```json
+"transformations": [
+  {"type": "rotate", "angle": -90, "x": 1, "y": 0, "z": 0},  // Applied to car only
+  {"type": "scale", "value": 1}                              // Applied to car only
+]
+```
+
+Result:
+- Car model: `rotation(-90°) * scale(1)` from carmodels.json
+- Viewing zones: `scale(1000)` to convert meters to millimeters
+
+### Model-Specific Configuration
+
+Each car model uses JSON configuration files located in `carmodels/{ModelName}/config/`:
 
 ### Camera Calibration (`calibraton.json`)
 
@@ -202,6 +280,43 @@ The application also displays:
 - **Red sphere**: Actual camera position from extrinsics data
 - **Blue frustum**: Camera viewing frustum visualization
 - **Green lines**: Frustum wireframe showing field of view
+
+## Troubleshooting
+
+### Viewing Zones Not Aligned with Car Model
+
+**Problem**: Viewing zones appear offset or rotated relative to the car model.
+
+**Solution**: Ensure transformations are applied correctly:
+- Car model gets transformations from `carmodels.json`
+- Viewing zones get ONLY millimeter scaling (no rotation/translation)
+
+**Common Mistake**: Applying car model transformations to both car and zones causes double-transformation.
+
+**Verification**: 
+```bash
+# Check transformation output in console
+./visual zone 5
+```
+Should show car transformations applied once, zones only scaled.
+
+### Car Model File Not Found
+
+**Problem**: `Error: Unable to load file: [path]`
+
+**Solution**: 
+1. Check file path in `carmodels.json` matches actual file location
+2. Ensure `.osgb` file exists in specified directory
+3. Verify file permissions are readable
+
+### Configuration Files Missing
+
+**Problem**: `Cannot open calibraton.json` or `viewingzones.json`
+
+**Solution**:
+1. Ensure config directory exists: `carmodels/{ModelName}/config/`
+2. Copy configuration files from working model (like Sharan)
+3. Adapt parameters for your specific model
 
 ## Files
 

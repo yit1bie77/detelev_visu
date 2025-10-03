@@ -57,6 +57,19 @@ struct ViewingZone {
     std::vector<osg::Vec3> corners;  // Will be populated from 1x12 matrix
 };
 
+struct CarModelTransformation {
+    std::string type;      // "rotate", "scale", "translate"
+    double angle;          // For rotation
+    double x, y, z;        // For rotation axis and translation
+    double value;          // For scale
+};
+
+struct CarModelConfig {
+    std::string name;
+    std::string path;
+    std::vector<CarModelTransformation> transformations;
+};
+
 // Simple JSON parsing functions (basic implementation)
 std::string trim(const std::string& str) {
     size_t first = str.find_first_not_of(' ');
@@ -225,6 +238,125 @@ std::vector<ViewingZone> loadViewingZones(const std::string& configPath) {
     std::cout << "Loaded " << zones.size() << " viewing zones from: " << configPath << "/viewingzones.json" << std::endl;
     std::cout << "Using 1x12 matrix format: [x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4]" << std::endl;
     return zones;
+}
+
+CarModelConfig loadCarModel(const std::string& carModelName) {
+    CarModelConfig config;
+    std::ifstream file("carmodels/carmodels.json");
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open carmodels/carmodels.json");
+    }
+    
+    std::string line, content;
+    while (std::getline(file, line)) {
+        content += line;
+    }
+    file.close();
+    
+    // Find the car model section (basic JSON parsing)
+    std::string searchKey = "\"" + carModelName + "\"";
+    size_t modelStart = content.find(searchKey);
+    if (modelStart == std::string::npos) {
+        throw std::runtime_error("Car model '" + carModelName + "' not found in carmodels.json");
+    }
+    
+    // Find the opening brace for this model
+    size_t braceStart = content.find("{", modelStart);
+    if (braceStart == std::string::npos) {
+        throw std::runtime_error("Invalid JSON structure for model: " + carModelName);
+    }
+    
+    // Extract path
+    size_t pathStart = content.find("\"path\"", braceStart);
+    size_t pathValueStart = content.find(":", pathStart) + 1;
+    size_t pathQuoteStart = content.find("\"", pathValueStart);
+    size_t pathQuoteEnd = content.find("\"", pathQuoteStart + 1);
+    config.path = content.substr(pathQuoteStart + 1, pathQuoteEnd - pathQuoteStart - 1);
+    
+    // Extract transformations
+    size_t transformStart = content.find("\"transformations\"", braceStart);
+    size_t arrayStart = content.find("[", transformStart);
+    size_t arrayEnd = content.find("]", arrayStart);
+    std::string transformArray = content.substr(arrayStart + 1, arrayEnd - arrayStart - 1);
+    
+    // Parse each transformation (look for type, angle, x, y, z, value)
+    size_t pos = 0;
+    while (pos < transformArray.length()) {
+        size_t objectStart = transformArray.find("{", pos);
+        if (objectStart == std::string::npos) break;
+        
+        size_t objectEnd = transformArray.find("}", objectStart);
+        if (objectEnd == std::string::npos) break;
+        
+        std::string transformObj = transformArray.substr(objectStart + 1, objectEnd - objectStart - 1);
+        CarModelTransformation transform;
+        
+        // Parse type
+        size_t typeStart = transformObj.find("\"type\"");
+        if (typeStart != std::string::npos) {
+            size_t typeValueStart = transformObj.find(":", typeStart) + 1;
+            size_t typeQuoteStart = transformObj.find("\"", typeValueStart);
+            size_t typeQuoteEnd = transformObj.find("\"", typeQuoteStart + 1);
+            transform.type = transformObj.substr(typeQuoteStart + 1, typeQuoteEnd - typeQuoteStart - 1);
+        }
+        
+        // Parse numeric values
+        auto parseValue = [&](const std::string& key) -> double {
+            size_t keyStart = transformObj.find("\"" + key + "\"");
+            if (keyStart == std::string::npos) return 0.0;
+            size_t valueStart = transformObj.find(":", keyStart) + 1;
+            size_t valueEnd = transformObj.find_first_of(",}", valueStart);
+            std::string valueStr = trim(transformObj.substr(valueStart, valueEnd - valueStart));
+            return std::stod(valueStr);
+        };
+        
+        transform.angle = parseValue("angle");
+        transform.x = parseValue("x");
+        transform.y = parseValue("y");
+        transform.z = parseValue("z");
+        transform.value = parseValue("value");
+        
+        config.transformations.push_back(transform);
+        pos = objectEnd + 1;
+    }
+    
+    config.name = carModelName;
+    std::cout << "Loaded car model '" << carModelName << "' with " << config.transformations.size() << " transformations" << std::endl;
+    std::cout << "Model path: " << config.path << std::endl;
+    
+    return config;
+}
+
+osg::Matrix applyCarModelTransformations(const CarModelConfig& config) {
+    osg::Matrix matrix;
+    matrix.makeIdentity();
+    
+    std::cout << "Applying transformations for " << config.name << ":" << std::endl;
+    
+    for (const auto& transform : config.transformations) {
+        if (transform.type == "rotate") {
+            osg::Matrix rotation;
+            osg::Vec3 axis(transform.x, transform.y, transform.z);
+            rotation.makeRotate(osg::DegreesToRadians(transform.angle), axis);
+            matrix = matrix * rotation;
+            std::cout << "  - Rotate " << transform.angle << "° around axis (" 
+                      << transform.x << ", " << transform.y << ", " << transform.z << ")" << std::endl;
+        }
+        else if (transform.type == "scale") {
+            osg::Matrix scale;
+            scale.makeScale(transform.value, transform.value, transform.value);
+            matrix = matrix * scale;
+            std::cout << "  - Scale by " << transform.value << std::endl;
+        }
+        else if (transform.type == "translate") {
+            osg::Matrix translation;
+            translation.makeTranslate(transform.x, transform.y, transform.z);
+            matrix = matrix * translation;
+            std::cout << "  - Translate by (" << transform.x << ", " << transform.y << ", " << transform.z << ")" << std::endl;
+        }
+    }
+    
+    return matrix;
 }
 
 // Helper to create a coordinate axes with arrowheads at the origin
@@ -427,21 +559,24 @@ void setupInitialCameraView(osgViewer::Viewer& viewer, osg::Node* modelNode)
 }
 
 void printUsage(const char* programName) {
-    std::cout << "Usage: " << programName << " [zone <number>]" << std::endl;
+    std::cout << "Usage: " << programName << " [model <name>] [zone <number>]" << std::endl;
     std::cout << "Options:" << std::endl;
+    std::cout << "  model <name>   Use specified car model (default: Sharan)" << std::endl;
     std::cout << "  zone <number>  Display only the specified zone (1-20)" << std::endl;
-    std::cout << "  (no args)      Display all zones" << std::endl;
+    std::cout << "  (no args)      Display all zones with default model (Sharan)" << std::endl;
     std::cout << std::endl;
     std::cout << "Examples:" << std::endl;
-    std::cout << "  " << programName << "           # Display all zones" << std::endl;
-    std::cout << "  " << programName << " zone 9    # Display only Zone 9" << std::endl;
-    std::cout << "  " << programName << " zone 15   # Display only Zone 15" << std::endl;
+    std::cout << "  " << programName << "                # Display all zones with Sharan" << std::endl;
+    std::cout << "  " << programName << " zone 9         # Display only Zone 9 with Sharan" << std::endl;
+    std::cout << "  " << programName << " model Golf7    # Display all zones with Golf7" << std::endl;
+    std::cout << "  " << programName << " model Lincoln  # Display all zones with Lincoln" << std::endl;
 }
 
 int main(int argc, char** argv)
 {
     // *** PARSE COMMAND LINE ARGUMENTS ***
     int displayZoneNumber = 0; // Default: display all zones
+    std::string carModelName = "Sharan"; // Default car model
     
     // Parse arguments
     if (argc > 1) {
@@ -458,6 +593,11 @@ int main(int argc, char** argv)
                 printUsage(argv[0]);
                 return 1;
             }
+        } else if (argc == 3 && std::string(argv[1]) == "model") {
+            carModelName = argv[2];
+        } else if (argc == 4 && std::string(argv[1]) == "model" && std::string(argv[3]) == "zone") {
+            carModelName = argv[2];
+            // This would need more complex parsing for model + zone
         } else if (std::string(argv[1]) == "--help" || std::string(argv[1]) == "-h") {
             printUsage(argv[0]);
             return 0;
@@ -468,12 +608,19 @@ int main(int argc, char** argv)
         }
     }
 
-    std::string filename = "carmodels/Sharan/Sharan.osgb";
+    // Load car model configuration
+    CarModelConfig carModel;
+    try {
+        carModel = loadCarModel(carModelName);
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading car model '" << carModelName << "': " << e.what() << std::endl;
+        return 1;
+    }
 
-    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(filename);
+    osg::ref_ptr<osg::Node> model = osgDB::readNodeFile(carModel.path);
     if (!model)
     {
-        std::cerr << "Error: Unable to load file: " << filename << std::endl;
+        std::cerr << "Error: Unable to load file: " << carModel.path << std::endl;
         return 1;
     }
 
@@ -487,8 +634,8 @@ int main(int argc, char** argv)
     std::cout << "Model bounds: Min(" << modelMin.x() << ", " << modelMin.y() << ", " << modelMin.z() << ")" << std::endl;
     std::cout << "              Max(" << modelMax.x() << ", " << modelMax.y() << ", " << modelMax.z() << ")" << std::endl;
 
-    // Load configuration from JSON files
-    std::string configPath = "carmodels/Sharan/config";
+    // Load configuration from JSON files - dynamic path based on car model
+    std::string configPath = "carmodels/" + carModelName + "/config";
     CameraCalibration cameraConfig;
     std::vector<ViewingZone> viewingZones;
     
@@ -597,7 +744,7 @@ int main(int argc, char** argv)
     carNameText->setCharacterSize(1.0f);
     carNameText->setAxisAlignment(osgText::TextBase::SCREEN);
     carNameText->setPosition(carCoord(0, 0, 1.2f));
-    carNameText->setText("Sharan");
+    carNameText->setText(carModelName);
     carNameText->setColor(osg::Vec4(1, 1, 0, 1));
 
     osg::ref_ptr<osg::Geode> carNameGeode = new osg::Geode();
@@ -629,6 +776,11 @@ int main(int argc, char** argv)
     } else {
         std::cout << "\n=== CREATING ONLY ZONE " << displayZoneNumber << " ===" << std::endl;
     }
+    
+    // Calculate zone transformation matrix - zones should ONLY be scaled to millimeters
+    // They should NOT get the same transformations as the car model because
+    // the zone coordinates are already defined relative to the transformed car
+    osg::Matrix zoneTransformMatrix = osg::Matrix::scale(metersToMmScale, metersToMmScale, metersToMmScale);
     
     int zoneCount = 0;
     
@@ -670,9 +822,8 @@ int main(int argc, char** argv)
         // Create transform for this zone
         osg::ref_ptr<osg::MatrixTransform> zoneTransform = new osg::MatrixTransform;
         
-        // Use the same transformation that worked for Zone 1: just scale to mm, no rotation
-        osg::Matrix transform = osg::Matrix::scale(metersToMmScale, metersToMmScale, metersToMmScale);
-        zoneTransform->setMatrix(transform);
+        // Apply the same pre-calculated transformations as the car model to keep zones aligned
+        zoneTransform->setMatrix(zoneTransformMatrix);
         
         // Make zones visible with their original colors but more opaque
         osg::Vec4 visibleColor = zone.color;
@@ -685,15 +836,14 @@ int main(int argc, char** argv)
     
     std::cout << "=== Created " << zoneCount << " viewing zone(s) ===" << std::endl;
 
-    // Apply Sharan model transformation to match coordinate system
-    osg::ref_ptr<osg::MatrixTransform> sharanTransform = new osg::MatrixTransform();
-    // Use the standard -90° X rotation as in original carmodels.json
-    // This should orient the car properly with our coordinate system
-    sharanTransform->setMatrix(osg::Matrix::rotate(osg::DegreesToRadians(-90.0), osg::X_AXIS));
-    sharanTransform->addChild(model.get());
+    // Apply car model transformations dynamically from carmodels.json
+    osg::ref_ptr<osg::MatrixTransform> carTransform = new osg::MatrixTransform();
+    osg::Matrix transformMatrix = applyCarModelTransformations(carModel);
+    carTransform->setMatrix(transformMatrix);
+    carTransform->addChild(model.get());
 
     osg::ref_ptr<osg::Group> root = new osg::Group();
-    root->addChild(sharanTransform);          // Car (rotated -90° X)
+    root->addChild(carTransform);             // Car with dynamic transformations
     root->addChild(overlayTransform);         // Car name text
     root->addChild(cameraPose.get());         // Frustum at origin
     root->addChild(camCenterGeode);           // Red circle at camera center
@@ -706,7 +856,7 @@ int main(int argc, char** argv)
     // Debug scene graph structure
     std::cout << "\nScene Graph Structure:" << std::endl;
     std::cout << "Root children: " << root->getNumChildren() << std::endl;
-    std::cout << "  - Sharan transform children: " << sharanTransform->getNumChildren() << std::endl;
+    std::cout << "  - " << carModelName << " transform children: " << carTransform->getNumChildren() << std::endl;
     std::cout << "  - Overlay transform children: " << overlayTransform->getNumChildren() << std::endl;
     std::cout << "  - Viewing zones group children: " << viewingZonesGroup->getNumChildren() << std::endl;
 
@@ -714,7 +864,7 @@ int main(int argc, char** argv)
     viewer.setSceneData(root.get());
 
     // Set the initial camera view using the new refactored function.
-    setupInitialCameraView(viewer, sharanTransform.get());
+    setupInitialCameraView(viewer, carTransform.get());
     
     if (displayZoneNumber > 0) {
         std::cout << "\nDisplaying only Zone " << displayZoneNumber << std::endl;

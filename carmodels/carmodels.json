@@ -1,0 +1,110 @@
+{
+    "Lincoln": {
+        "path": "carmodels/Lincoln/4osgb_Lincoln.osgb",
+        "transformations": [
+            {
+                "type": "rotate",
+                "angle": -90,
+                "x": 1,
+                "y": 0,
+                "z": 0
+            },
+            {
+                "type": "scale",
+                "value": 1
+            },
+            {
+                "type": "translate",
+                "x": 0,
+                "y": 0,
+                "z": 0
+            }
+        ]
+    },
+    
+    "Nissan": {
+        "path": "carmodels/Nissan/nissan_arya.osgb",
+        "transformations": [
+            {
+                "type": "rotate",
+                "angle": -90,
+                "x": 1,
+                "y": 0,
+                "z": 0
+            },
+            {
+                "type": "scale",
+                "value": 1
+            },
+            {
+                "type": "translate",
+                "x": 115,
+                "y": 0,
+                "z": 0
+            }
+        ]
+    },
+    
+    "Sharan": {
+        "path": "carmodels/Sharan/Sharan.osgb",
+        "transformations": [
+            {
+                "type": "rotate",
+                "angle": -90,
+                "x": 1,
+                "y": 0,
+                "z": 0
+            },
+            {
+                "type": "scale",
+                "value": 1
+            }
+        ]
+    },
+
+    "Golf7": {
+        "path": "carmodels/Golf7/Golf7.osgb",
+        "transformations": [
+            {
+                "type": "rotate",
+                "angle": -180,
+                "x": 1,
+                "y": 0,
+                "z": 0
+            },
+            {
+                "type": "scale",
+                "value": 1
+            },
+            {
+                "type": "translate",
+                "x": -400,
+                "y": -1200,
+                "z": 250
+            }
+        ]
+    },
+    
+    "Etron": {
+        "path": "carmodels/Etron/eTron.osgb",
+        "transformations": [
+            {
+                "type": "rotate",
+                "angle": -90,
+                "x": 1,
+                "y": 0,
+                "z": 0
+            },
+            {
+                "type": "scale",
+                "value": 1
+            },
+            {
+                "type": "translate",
+                "x": 0,
+                "y": 0,
+                "z": 0
+            }
+        ]
+    }
+}
