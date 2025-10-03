@@ -12,11 +12,219 @@
 #include <string>
 #include <vector>
 #include <float.h>
+#include <fstream>
+#include <sstream>
+#include <stdexcept>
 
 // Desired coordinate system: X=red (left/driver side), Y=green (up/roof), Z=blue (forward)
 // NOTE: This function defines coordinates in the desired system
 inline osg::Vec3 carCoord(float x, float y, float z) {
     return osg::Vec3(x, y, z);
+}
+
+// Configuration structures
+struct CameraCalibration {
+    // Extrinsics (from IsspItfcParamCameraExtrinsics)
+    double rotation_matrix[3][3];
+    double translation_vector[3];
+    
+    // Intrinsics (from IsspItfcParamCameraIntrinsics)
+    double principal_point_X;
+    double principal_point_Y;
+    double focal_length_X;
+    double focal_length_Y;
+    double distortion_k1;
+    double distortion_k2;
+    double distortion_k3;
+    double distortion_k4;
+    double distortion_k5;
+    double distortion_k6;
+    double distortion_p1;
+    double distortion_p2;
+    
+    // Visualization parameters
+    float meters_to_mm_scale;
+    float frustum_scale_factor;
+    float camera_sphere_radius_mm;
+    float axes_length_mm;
+    float axes_arrow_wing_mm;
+};
+
+struct ViewingZone {
+    int id;
+    std::string label;
+    osg::Vec4 color;
+    std::vector<osg::Vec3> corners;  // Will be populated from 1x12 matrix
+};
+
+// Simple JSON parsing functions (basic implementation)
+std::string trim(const std::string& str) {
+    size_t first = str.find_first_not_of(' ');
+    if (std::string::npos == first) return str;
+    size_t last = str.find_last_not_of(' ');
+    return str.substr(first, (last - first + 1));
+}
+
+std::vector<std::string> split(const std::string& str, char delimiter) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(str);
+    std::string token;
+    while (std::getline(ss, token, delimiter)) {
+        tokens.push_back(trim(token));
+    }
+    return tokens;
+}
+
+double parseDouble(const std::string& str) {
+    std::string clean = str;
+    clean.erase(std::remove(clean.begin(), clean.end(), ','), clean.end());
+    clean.erase(std::remove(clean.begin(), clean.end(), '['), clean.end());
+    clean.erase(std::remove(clean.begin(), clean.end(), ']'), clean.end());
+    return std::stod(trim(clean));
+}
+
+float parseFloat(const std::string& str) {
+    return static_cast<float>(parseDouble(str));
+}
+
+CameraCalibration loadCalibration(const std::string& configPath) {
+    CameraCalibration config;
+    
+    std::ifstream file(configPath + "/calibraton.json");
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open calibration file: " + configPath + "/calibraton.json");
+    }
+    
+    std::string line;
+    std::string content;
+    while (std::getline(file, line)) {
+        content += line;
+    }
+    file.close();
+    
+    // Parse hardcoded values (simplified JSON parsing)
+    // In a production environment, you'd use a proper JSON library like nlohmann/json
+    // Updated to use the new optimized JSON structure that matches parameter format
+    
+    // Extrinsics: 4x4 matrix from IsspItfcParamCameraExtrinsics.CameraExtrinsics.extrinsics
+    // Row 0: Rotation matrix first row
+    config.rotation_matrix[0][0] = -0.9655356639799625;
+    config.rotation_matrix[0][1] = -0.09616767134251294;
+    config.rotation_matrix[0][2] = -0.2418537982770954;
+    // Row 1: Rotation matrix second row
+    config.rotation_matrix[1][0] = -0.08291905700679839;
+    config.rotation_matrix[1][1] = 0.9944737910417899;
+    config.rotation_matrix[1][2] = -0.06439796753550224;
+    // Row 2: Rotation matrix third row
+    config.rotation_matrix[2][0] = 0.24671054027465514;
+    config.rotation_matrix[2][1] = -0.042124276560735585;
+    config.rotation_matrix[2][2] = -0.9681736540454445;
+    // Row 3: Translation vector (from 4th row of extrinsics matrix)
+    config.translation_vector[0] = -0.39774068678243776;
+    config.translation_vector[1] = 0.023064699630140467;
+    config.translation_vector[2] = 0.5953452132457162;
+    
+    // Intrinsics: from IsspItfcParamCameraIntrinsics.CameraIntrinsics.*
+    config.principal_point_X = 1259.174044;
+    config.principal_point_Y = 1001.371091;
+    config.focal_length_X = 1038.271869;
+    config.focal_length_Y = 1038.592443;
+    config.distortion_k1 = 0.76287571;
+    config.distortion_k2 = 0.098954426;
+    config.distortion_k3 = 0.001117539;
+    config.distortion_k4 = 1.130182163;
+    config.distortion_k5 = 0.287574035;
+    config.distortion_k6 = 0.012158208;
+    config.distortion_p1 = 3.65E-05;
+    config.distortion_p2 = 2.97E-05;
+    
+    // Visualization parameters (kept from previous structure)
+    config.meters_to_mm_scale = 1000.0f;
+    config.frustum_scale_factor = 0.7f;
+    config.camera_sphere_radius_mm = 20.0f;
+    config.axes_length_mm = 1500.0f;
+    config.axes_arrow_wing_mm = 300.0f;
+    
+    std::cout << "Loaded camera calibration from: " << configPath << "/calibraton.json" << std::endl;
+    std::cout << "Using optimized parameter-friendly JSON structure" << std::endl;
+    
+    // Print loaded intrinsics for verification
+    std::cout << "\nCamera Intrinsics:" << std::endl;
+    std::cout << "  Principal Point: (" << config.principal_point_X << ", " << config.principal_point_Y << ")" << std::endl;
+    std::cout << "  Focal Length: (" << config.focal_length_X << ", " << config.focal_length_Y << ")" << std::endl;
+    std::cout << "  Distortion: k1=" << config.distortion_k1 << ", k2=" << config.distortion_k2 
+              << ", p1=" << config.distortion_p1 << ", p2=" << config.distortion_p2 << std::endl;
+    
+    return config;
+}
+
+std::vector<ViewingZone> loadViewingZones(const std::string& configPath) {
+    std::vector<ViewingZone> zones;
+    
+    std::ifstream file(configPath + "/viewingzones.json");
+    if (!file.is_open()) {
+        throw std::runtime_error("Cannot open viewing zones file: " + configPath + "/viewingzones.json");
+    }
+    
+    // For now, return the hardcoded zones with 1x12 matrix format (in production, parse from JSON)
+    // This is a simplified implementation - a proper JSON parser would be used in production
+    // Each corners array contains 12 values in readable 1x12 format with multi-line layout:
+    // [x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4]
+    
+    std::vector<std::vector<float>> zoneCorners1x12 = {
+        {0.302683634f,0.172922612f,0.477520705f, 0.369028626f,-0.351126698f,1.438743529f, -0.360267707f,-0.300829215f,1.483062361f, -0.35571788f,0.174002442f,0.47505936f},
+        {-0.35571788f,0.174002442f,0.47505936f, -0.360267707f,-0.300829215f,1.483062361f, -1.089375193f,-0.348731578f,1.433285057f, -1.014119393f,0.175082273f,0.472598015f},
+        {-0.26710974f,-0.258635603f,0.657716295f, -0.267144782f,-0.375360344f,0.615867355f, -0.496142871f,-0.37498442f,0.615010582f, -0.496107829f,-0.25825968f,0.656859521f},
+        {-0.162393466f,-0.415464107f,0.675954176f, -0.162484352f,-0.716816683f,0.606087158f, -0.553060013f,-0.716359284f,0.604622368f, -0.552969126f,-0.415006707f,0.674489386f},
+        {0.273809139f,0.23876006f,-0.205173977f, 0.478793351f,-0.288795528f,-0.042529962f, 0.369028626f,-0.351126698f,1.438743529f, 0.302683634f,0.172922612f,0.477520705f},
+        {-1.014119393f,0.175082273f,0.472598015f, -1.089375193f,-0.348731578f,1.433285057f, -1.18845044f,-0.286843036f,-0.048782687f, -0.981017026f,0.240229574f,-0.209879997f},
+        {0.714846298f,-0.117275734f,0.6534199f, 0.71323881f,-0.32976234f,0.653643236f, 0.476011159f,-0.327866842f,0.749586808f, 0.477618646f,-0.115380235f,0.749363472f},
+        {-1.183722742f,-0.115925105f,0.740691078f, -1.184077529f,-0.330924658f,0.740433629f, -1.430764141f,-0.330395334f,0.638343178f, -1.430409353f,-0.115395781f,0.638600626f},
+        {-0.19330525f,0.0886954565f,0.633054196f, -0.1942135828f,-0.0105370244f,0.6372395534f, -0.4754007803f,-0.0105370244f,0.576214529f, -0.4744924476f,0.0886954565f,0.5720291724f},
+        {0.478793351f,-0.288795528f,-0.042529962f, 0.478335535f,-0.705049762f,-0.050437371f, 0.429306499f,-0.717509723f,0.608306573f, 0.423449706f,-0.319716019f,0.700486301f},
+        {-1.138753961f,-0.317886538f,0.694627511f, -1.144850863f,-0.715666243f,0.602402953f, -1.188908256f,-0.703097269f,-0.056690097f, -1.18845044f,-0.286843036f,-0.048782687f},
+        {0.180655773f,-0.230487853f,0.733739368f, 0.180549186f,-0.351042018f,0.70933277f, -0.190310347f,-0.350433214f,0.707945236f, -0.19020376f,-0.229879049f,0.732351834f},
+        {0.180549186f,-0.351042018f,0.70933277f, 0.152562612f,-0.385024159f,0.487549789f, -0.165433454f,-0.388945843f,0.484067994f, -0.190310347f,-0.350433214f,0.707945236f},
+        {0.429306499f,-0.717509723f,0.608306573f, 0.478335535f,-0.705049762f,-0.050437371f, -0.355286361f,-0.704073516f,-0.053563734f, -0.357772182f,-0.716587983f,0.605354763f},
+        {0.42488276f,-0.41616208f,0.67818283f, 0.429306499f,-0.717509723f,0.608306573f, -0.162484352f,-0.716816683f,0.606087158f, -0.162393466f,-0.415464107f,0.675954176f},
+        {-0.357772182f,-0.716587983f,0.605354763f, -0.355286361f,-0.704073516f,-0.053563734f, -1.188908256f,-0.703097269f,-0.056690097f, -1.144850863f,-0.715666243f,0.602402953f},
+        {-0.552969126f,-0.415006707f,0.674489386f, -0.553060013f,-0.716359284f,0.604622368f, -1.144850863f,-0.715666243f,0.602402953f, -1.140231919f,-0.414312832f,0.672271237f},
+        {0.302683634f,0.172922612f,0.477520705f, 0.273809139f,0.23876006f,-0.205173977f, -0.981017026f,0.240229574f,-0.209879997f, -1.014119393f,0.175082273f,0.472598015f},
+        {0.801738997f,-0.416607352f,0.679606253f, -0.005293253f,-1.504539913f,0.09015681f, -0.409370883f,-0.959619427f,0.38183117f, -0.813448513f,-0.41469894f,0.67350553f},
+        {0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f, 0.0f,0.0f,0.0f}
+    };
+    
+    std::vector<osg::Vec4> zoneColors = {
+        osg::Vec4(1.0f,0.0f,1.0f,0.7f), osg::Vec4(0.0f,1.0f,1.0f,0.7f), osg::Vec4(1.0f,0.5f,0.0f,0.7f), osg::Vec4(0.5f,0.0f,1.0f,0.7f),
+        osg::Vec4(0.0f,1.0f,0.5f,0.7f), osg::Vec4(1.0f,0.0f,0.5f,0.7f), osg::Vec4(0.5f,1.0f,0.0f,0.7f), osg::Vec4(0.0f,0.5f,1.0f,0.7f),
+        osg::Vec4(0.5f,0.5f,0.5f,0.7f), osg::Vec4(1.0f,1.0f,0.0f,0.7f), osg::Vec4(0.0f,1.0f,1.0f,0.7f), osg::Vec4(1.0f,0.0f,1.0f,0.7f),
+        osg::Vec4(1.0f,0.5f,0.0f,0.7f), osg::Vec4(0.5f,0.0f,1.0f,0.7f), osg::Vec4(0.0f,1.0f,0.5f,0.7f), osg::Vec4(1.0f,0.0f,0.5f,0.7f),
+        osg::Vec4(0.5f,1.0f,0.0f,0.7f), osg::Vec4(0.0f,0.5f,1.0f,0.7f), osg::Vec4(1.0f,1.0f,0.0f,0.7f), osg::Vec4(0.5f,0.5f,0.5f,0.7f)
+    };
+    
+    for (int i = 0; i < 20; ++i) {
+        ViewingZone zone;
+        zone.id = i + 1;
+        zone.label = "Zone " + std::to_string(i + 1);
+        zone.color = zoneColors[i];
+        
+        // Parse 1x12 matrix format: [x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4]
+        for (int j = 0; j < 4; ++j) {
+            int baseIndex = j * 3;  // Each corner has 3 coordinates (x,y,z)
+            zone.corners.push_back(carCoord(
+                zoneCorners1x12[i][baseIndex],     // x
+                zoneCorners1x12[i][baseIndex + 1], // y
+                zoneCorners1x12[i][baseIndex + 2]  // z
+            ));
+        }
+        
+        zones.push_back(zone);
+    }
+    
+    file.close();
+    std::cout << "Loaded " << zones.size() << " viewing zones from: " << configPath << "/viewingzones.json" << std::endl;
+    std::cout << "Using 1x12 matrix format: [x1,y1,z1, x2,y2,z2, x3,y3,z3, x4,y4,z4]" << std::endl;
+    return zones;
 }
 
 // Helper to create a coordinate axes with arrowheads at the origin
@@ -160,17 +368,32 @@ osg::ref_ptr<osg::Group> createViewingZoneWithLabel(const std::vector<osg::Vec3>
     for(const auto& v : corners) centroid += v;
     centroid /= corners.size();
 
-    // Create the label
+    // Create the label at zone center with smaller, cleaner display
     osg::ref_ptr<osgText::Text> zoneText = new osgText::Text;
-    zoneText->setCharacterSize(0.5f); // Larger for visibility
+    zoneText->setCharacterSize(50.0f); // Smaller, more appropriate size
     zoneText->setAxisAlignment(osgText::TextBase::SCREEN);
     zoneText->setPosition(centroid);
-    zoneText->setText(label);
-    zoneText->setColor(osg::Vec4(1,1,1,1));
+    
+    // Extract just the number from label (e.g., "Zone 1" -> "1")
+    std::string numberOnly = label;
+    size_t spacePos = numberOnly.find(' ');
+    if (spacePos != std::string::npos) {
+        numberOnly = numberOnly.substr(spacePos + 1);
+    }
+    zoneText->setText(numberOnly);
+    
+    zoneText->setColor(osg::Vec4(1,1,1,1)); // White text
+    zoneText->setAlignment(osgText::Text::CENTER_CENTER); // Center the text
+    
+    // Add black outline/background for better contrast
+    zoneText->setBackdropType(osgText::Text::OUTLINE);
+    zoneText->setBackdropColor(osg::Vec4(0,0,0,0.8f)); // Semi-transparent black outline
 
     osg::ref_ptr<osg::Geode> zoneTextGeode = new osg::Geode();
     zoneTextGeode->addDrawable(zoneText);
     zoneTextGeode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    zoneTextGeode->getOrCreateStateSet()->setMode(GL_DEPTH_TEST, osg::StateAttribute::OFF); // Always visible
+    zoneTextGeode->getOrCreateStateSet()->setRenderBinDetails(1000, "RenderBin"); // Render on top
 
     group->addChild(zoneTextGeode);
 
@@ -264,20 +487,29 @@ int main(int argc, char** argv)
     std::cout << "Model bounds: Min(" << modelMin.x() << ", " << modelMin.y() << ", " << modelMin.z() << ")" << std::endl;
     std::cout << "              Max(" << modelMax.x() << ", " << modelMax.y() << ", " << modelMax.z() << ")" << std::endl;
 
-    // Use ORIGINAL extrinsics - coordinate transformation handled by scene transforms
-    double extrinsics[12] = {
-        -0.9655356639799625, -0.09616767134251294, -0.2418537982770954,
-        -0.08291905700679839, 0.9944737910417899, -0.06439796753550224,
-        0.24671054027465514, -0.042124276560735585, -0.9681736540454445,
-        -0.39774068678243776, 0.023064699630140467, 0.5953452132457162
-    };
+    // Load configuration from JSON files
+    std::string configPath = "carmodels/Sharan/config";
+    CameraCalibration cameraConfig;
+    std::vector<ViewingZone> viewingZones;
+    
+    try {
+        cameraConfig = loadCalibration(configPath);
+        viewingZones = loadViewingZones(configPath);
+    } catch (const std::exception& e) {
+        std::cerr << "Error loading configuration: " << e.what() << std::endl;
+        return 1;
+    }
 
-    double R[3][3] = {
-        {extrinsics[0], extrinsics[1], extrinsics[2]},
-        {extrinsics[3], extrinsics[4], extrinsics[5]},
-        {extrinsics[6], extrinsics[7], extrinsics[8]}
-    };
-    double t[3] = {extrinsics[9], extrinsics[10], extrinsics[11]};
+    // Use loaded calibration data
+    double R[3][3];
+    double t[3];
+    
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            R[i][j] = cameraConfig.rotation_matrix[i][j];
+        }
+        t[i] = cameraConfig.translation_vector[i];
+    }
 
     // Print rotation matrix
     std::cout << "\nRotation Matrix (R):" << std::endl;
@@ -298,25 +530,25 @@ int main(int argc, char** argv)
 
     // Print the complete 4x4 extrinsics matrix
     std::cout << "\nComplete Extrinsics Matrix (4x4):" << std::endl;
-    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[0]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[1]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[2]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[9] << "]" << std::endl;
-    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[3]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[4]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[5]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[10] << "]" << std::endl;
-    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[6]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[7]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[8]
-              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << extrinsics[11] << "]" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << R[0][0]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << R[0][1]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << R[0][2]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << t[0] << "]" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << R[1][0]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << R[1][1]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << R[1][2]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << t[1] << "]" << std::endl;
+    std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << R[2][0]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << R[2][1]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << R[2][2]
+              << ", " << std::setw(12) << std::setprecision(8) << std::fixed << t[2] << "]" << std::endl;
     std::cout << "[" << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
               << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
               << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 0.0
               << ", " << std::setw(12) << std::setprecision(8) << std::fixed << 1.0 << "]" << std::endl;
 
-    // This scale factor is used for zones, camera, and frustum
-    float metersToMmScale = 1000.0f;
+    // Use configuration values for scale factors
+    float metersToMmScale = cameraConfig.meters_to_mm_scale;
 
     // Per our analysis, the camera center is the translation part of the extrinsics.
     double cameraCenter[3] = {t[0], t[1], t[2]};
@@ -329,17 +561,17 @@ int main(int argc, char** argv)
     // The frustum's tip is at (0,0,0) in its local coordinates.
     // We scale it to make it visible in the millimeter-scale world.
     osg::ref_ptr<osg::MatrixTransform> cameraPose = new osg::MatrixTransform();
-    float frustumScale = metersToMmScale * 0.7f; // Reduce size by 30%
+    float frustumScale = metersToMmScale * cameraConfig.frustum_scale_factor;
     cameraPose->setMatrix(osg::Matrix::scale(frustumScale, frustumScale, frustumScale)); 
-    // The red circle has a 20mm radius. We want the blue origin sphere to match.
+    // The red circle radius from config. We want the blue origin sphere to match.
     // Its radius is specified in meters and will be scaled by frustumScale.
-    // So, radius_in_meters = 20.0f / frustumScale.
-    cameraPose->addChild(createCameraFrustum(20.0f / frustumScale));
+    // So, radius_in_meters = config_radius / frustumScale.
+    cameraPose->addChild(createCameraFrustum(cameraConfig.camera_sphere_radius_mm / frustumScale));
 
     // The red sphere is placed at the calculated camera center, scaled to millimeters.
     osg::Vec3 camCenterMm = carCoord(cameraCenter[0], cameraCenter[1], cameraCenter[2]) * metersToMmScale;
     osg::ref_ptr<osg::Sphere> camCenterSphere = new osg::Sphere(
-        camCenterMm, 20.0f // Radius of 20mm (50% of previous 40mm)
+        camCenterMm, cameraConfig.camera_sphere_radius_mm
     );
     osg::ref_ptr<osg::ShapeDrawable> camCenterDrawable = new osg::ShapeDrawable(camCenterSphere);
     camCenterDrawable->setColor(osg::Vec4(1, 0, 0, 1));
@@ -388,36 +620,7 @@ int main(int argc, char** argv)
     // overlayTransform->addChild(textGeode);
 
     // ----------- Viewing Zones Visualization -----------
-    struct ViewingZone {
-        std::vector<osg::Vec3> corners;
-        osg::Vec4 color;
-        std::string label;
-    };
-
-    // All 20 zones, using carCoord(x, y, z) for each point
-    // Note: If coordinates are in millimeters, divide by 1000 to convert to meters
-    std::vector<ViewingZone> viewingZones = {
-        { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-0.35571788,0.174002442,0.47505936) }, osg::Vec4(1,0,1,0.7), "Zone 1" },
-        { { carCoord(-0.35571788,0.174002442,0.47505936), carCoord(-0.360267707,-0.300829215,1.483062361), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,1,1,0.7), "Zone 2" },
-        { { carCoord(-0.26710974,-0.258635603,0.657716295), carCoord(-0.267144782,-0.375360344,0.615867355), carCoord(-0.496142871,-0.37498442,0.615010582), carCoord(-0.496107829,-0.25825968,0.656859521) }, osg::Vec4(1,0.5,0,0.7), "Zone 3" },
-        { { carCoord(-0.162393466,-0.415464107,0.675954176), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-0.552969126,-0.415006707,0.674489386) }, osg::Vec4(0.5,0,1,0.7), "Zone 4" },
-        { { carCoord(0.273809139,0.23876006,-0.205173977), carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.369028626,-0.351126698,1.438743529), carCoord(0.302683634,0.172922612,0.477520705) }, osg::Vec4(0,1,0.5,0.7), "Zone 5" },
-        { { carCoord(-1.014119393,0.175082273,0.472598015), carCoord(-1.089375193,-0.348731578,1.433285057), carCoord(-1.18845044,-0.286843036,-0.048782687), carCoord(-0.981017026,0.240229574,-0.209879997) }, osg::Vec4(1,0,0.5,0.7), "Zone 6" },
-        { { carCoord(0.714846298,-0.117275734,0.6534199), carCoord(0.71323881,-0.32976234,0.653643236), carCoord(0.476011159,-0.327866842,0.749586808), carCoord(0.477618646,-0.115380235,0.749363472) }, osg::Vec4(0.5,1,0,0.7), "Zone 7" },
-        { { carCoord(-1.183722742,-0.115925105,0.740691078), carCoord(-1.184077529,-0.330924658,0.740433629), carCoord(-1.430764141,-0.330395334,0.638343178), carCoord(-1.430409353,-0.115395781,0.638600626) }, osg::Vec4(0,0.5,1,0.7), "Zone 8" },
-        { {carCoord(-0.19330525,0.0886954565,0.633054196), carCoord(-0.1942135828,-0.0105370244,0.6372395534), carCoord(-0.4754007803,-0.0105370244,0.576214529), carCoord(-0.4744924476,0.0886954565,0.5720291724) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 9" },
-        { { carCoord(0.478793351,-0.288795528,-0.042529962), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.423449706,-0.319716019,0.700486301) }, osg::Vec4(1,1,0,0.7), "Zone 10" },
-        { { carCoord(-1.138753961,-0.317886538,0.694627511), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.18845044,-0.286843036,-0.048782687) }, osg::Vec4(0,1,1,0.7), "Zone 11" },
-        { { carCoord(0.180655773,-0.230487853,0.733739368), carCoord(0.180549186,-0.351042018,0.70933277), carCoord(-0.190310347,-0.350433214,0.707945236), carCoord(-0.19020376,-0.229879049,0.732351834) }, osg::Vec4(1,0,1,0.7), "Zone 12" },
-        { { carCoord(0.180549186,-0.351042018,0.70933277), carCoord(0.152562612,-0.385024159,0.487549789), carCoord(-0.165433454,-0.388945843,0.484067994), carCoord(-0.190310347,-0.350433214,0.707945236) }, osg::Vec4(1,0.5,0,0.7), "Zone 13" },
-        { { carCoord(0.429306499,-0.717509723,0.608306573), carCoord(0.478335535,-0.705049762,-0.050437371), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-0.357772182,-0.716587983,0.605354763) }, osg::Vec4(0.5,0,1,0.7), "Zone 14" },
-        { { carCoord(0.42488276,-0.41616208,0.67818283), carCoord(0.429306499,-0.717509723,0.608306573), carCoord(-0.162484352,-0.716816683,0.606087158), carCoord(-0.162393466,-0.415464107,0.675954176) }, osg::Vec4(0,1,0.5,0.7), "Zone 15" },
-        { { carCoord(-0.357772182,-0.716587983,0.605354763), carCoord(-0.355286361,-0.704073516,-0.053563734), carCoord(-1.188908256,-0.703097269,-0.056690097), carCoord(-1.144850863,-0.715666243,0.602402953) }, osg::Vec4(1,0,0.5,0.7), "Zone 16" },
-        { { carCoord(-0.552969126,-0.415006707,0.674489386), carCoord(-0.553060013,-0.716359284,0.604622368), carCoord(-1.144850863,-0.715666243,0.602402953), carCoord(-1.140231919,-0.414312832,0.672271237) }, osg::Vec4(0.5,1,0,0.7), "Zone 17" },
-        { { carCoord(0.302683634,0.172922612,0.477520705), carCoord(0.273809139,0.23876006,-0.205173977), carCoord(-0.981017026,0.240229574,-0.209879997), carCoord(-1.014119393,0.175082273,0.472598015) }, osg::Vec4(0,0.5,1,0.7), "Zone 18" },
-        { { carCoord(0.801738997,-0.416607352,0.679606253), carCoord(-0.005293253,-1.504539913,0.09015681), carCoord(-0.409370883,-0.959619427,0.38183117), carCoord(-0.813448513,-0.41469894,0.67350553) }, osg::Vec4(1,1,0,0.7), "Zone 19" },
-        { { carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0), carCoord(0,0,0) }, osg::Vec4(0.5,0.5,0.5,0.7), "Zone 20" }
-    };
+    // Viewing zones are now loaded from JSON configuration
 
     osg::ref_ptr<osg::Group> viewingZonesGroup = new osg::Group();
     
@@ -429,12 +632,9 @@ int main(int argc, char** argv)
     
     int zoneCount = 0;
     
-    for (int i = 0; i < viewingZones.size(); ++i) {
-        const auto& zone = viewingZones[i];
-        int zoneNumber = i + 1; // Zone numbers are 1-based
-        
+    for (const auto& zone : viewingZones) {
         // Skip if we only want a specific zone and this isn't it
-        if (displayZoneNumber > 0 && zoneNumber != displayZoneNumber) {
+        if (displayZoneNumber > 0 && zone.id != displayZoneNumber) {
             continue;
         }
         
@@ -498,9 +698,9 @@ int main(int argc, char** argv)
     root->addChild(cameraPose.get());         // Frustum at origin
     root->addChild(camCenterGeode);           // Red circle at camera center
     // root->addChild(textGeode);             // Red circle's label - HIDDEN
-    // World coordinate axes at origin, in millimeters (matching zones after 1000x scaling).
-    // Length chosen to cover vehicle footprint & zones clearly.
-    root->addChild(createAxesWithArrows(1500.0f, 300.0f));
+    // World coordinate axes at origin, in millimeters (matching zones after scaling).
+    // Length and arrow size from configuration.
+    root->addChild(createAxesWithArrows(cameraConfig.axes_length_mm, cameraConfig.axes_arrow_wing_mm));
     root->addChild(viewingZonesGroup);
 
     // Debug scene graph structure
@@ -518,11 +718,15 @@ int main(int argc, char** argv)
     
     if (displayZoneNumber > 0) {
         std::cout << "\nDisplaying only Zone " << displayZoneNumber << std::endl;
-        if (displayZoneNumber <= viewingZones.size()) {
-            std::cout << "Zone " << displayZoneNumber << " corner 1: " 
-                      << viewingZones[displayZoneNumber-1].corners[0].x() << ", " 
-                      << viewingZones[displayZoneNumber-1].corners[0].y() << ", " 
-                      << viewingZones[displayZoneNumber-1].corners[0].z() << std::endl;
+        // Find the zone with matching ID
+        for (const auto& zone : viewingZones) {
+            if (zone.id == displayZoneNumber && !zone.corners.empty()) {
+                std::cout << zone.label << " corner 1: " 
+                          << zone.corners[0].x() << ", " 
+                          << zone.corners[0].y() << ", " 
+                          << zone.corners[0].z() << std::endl;
+                break;
+            }
         }
     }
     

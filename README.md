@@ -5,7 +5,7 @@ A 3D visualization application for viewing car models with viewing zones using O
 ## Features
 
 - Load and display 3D car models (OSGB format)
-- Visualize 20 different viewing zones with color coding
+- Visualize 20 different viewing zones with color coding and center labels
 - Display camera frustum and position visualization
 - Interactive 3D navigation with mouse controls
 - Selective zone display (show all zones or specific zone)
@@ -23,6 +23,88 @@ A 3D visualization application for viewing car models with viewing zones using O
 
 # Help
 ./visual --help
+```
+
+## Configuration
+
+The application uses JSON configuration files located in `carmodels/Sharan/config/`:
+
+### Camera Calibration (`calibraton.json`)
+
+Contains camera extrinsics and visualization parameters:
+
+```json
+#### `calibraton.json` Structure (Optimized for Parameter Copy-Paste):
+```json
+{
+  "IsspItfcParamCameraExtrinsics": {
+    "CameraExtrinsics": {
+      "comment": "Copy from: IsspItfcParamCameraExtrinsics.CameraExtrinsics.extrinsics",
+      "extrinsics": [
+        [r11, r12, r13],
+        [r21, r22, r23], 
+        [r31, r32, r33],
+        [tx, ty, tz]
+      ]
+    }
+  },
+  "IsspItfcParamCameraIntrinsics": {
+    "CameraIntrinsics": {
+      "comment": "Copy individual values from IsspItfcParamCameraIntrinsics.CameraIntrinsics.*",
+      "principal_point_X": 1259.174044,
+      "principal_point_Y": 1001.371091,
+      "focal_length_X": 1038.271869,
+      "focal_length_Y": 1038.592443,
+      "distortion_k1": 0.76287571,
+      "distortion_k2": 0.098954426,
+      "distortion_k3": 0.001117539,
+      "distortion_k4": 1.130182163,
+      "distortion_k5": 0.287574035,
+      "distortion_k6": 0.012158208,
+      "distortion_p1": 3.65E-05,
+      "distortion_p2": 2.97E-05
+    }
+  },
+  "visualization": {
+    "meters_to_mm_scale": 1000.0,
+    "frustum_scale_factor": 0.7,
+    "camera_sphere_radius_mm": 20.0,
+    "axes_length_mm": 1500.0,
+    "axes_arrow_wing_mm": 300.0
+  }
+}
+```
+
+### Viewing Zones (`viewingzones.json`)
+
+Contains the 20 viewing zones with their 3D coordinates and colors:
+
+```json
+#### `viewingzones.json` Structure:
+```json
+{
+  "viewing_zones": [
+    {
+      "id": 1,
+      "label": "Zone 1",
+      "color": [1.0, 0.0, 1.0, 0.7],
+      "corners": 
+      [
+        x1, y1, z1,
+        x2, y2, z2,
+        x3, y3, z3,
+        x4, y4, z4
+      ]
+    }
+  ]
+}
+```
+
+**Note**: The `corners` field uses a **1x12 matrix format** with improved readability - a multi-line array containing the coordinates of all 4 corners:
+- Elements 0-2: Corner 1 (x1, y1, z1)
+- Elements 3-5: Corner 2 (x2, y2, z2)  
+- Elements 6-8: Corner 3 (x3, y3, z3)
+- Elements 9-11: Corner 4 (x4, y4, z4)
 ```
 
 ## World Coordinate System
@@ -126,6 +208,8 @@ The application also displays:
 - `visual.cpp`: Main application source code
 - `Makefile`: Build configuration
 - `carmodels/Sharan/Sharan.osgb`: 3D car model file
+- `carmodels/Sharan/config/calibraton.json`: Camera calibration and visualization parameters
+- `carmodels/Sharan/config/viewingzones.json`: Viewing zone definitions and coordinates
 - `README.md`: This documentation
 
 ## Development Notes
